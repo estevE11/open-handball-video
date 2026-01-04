@@ -37,6 +37,7 @@ export type ProjectState = ProjectData & {
   createSegmentFromTrigger: (mainLabelId: Id, triggerTimeSec: number) => Segment | null;
   appendSecondaryToLastSegment: (secondaryLabelId: Id) => void;
   deleteSegment: (segmentId: Id) => void;
+  updateSegmentTimes: (segmentId: Id, startTimeSec: number, endTimeSec: number) => void;
 
   /** Export *persisted* project data as a stable JSON string. */
   exportProjectJson: () => string;
@@ -258,6 +259,15 @@ export const useProjectStore = create<ProjectState>()(
           set((s) => ({
             segments: s.segments.filter((seg) => seg.id !== segmentId),
             lastCreatedSegmentId: s.lastCreatedSegmentId === segmentId ? null : s.lastCreatedSegmentId,
+            updatedAtMs: nowMs(),
+          }));
+        },
+
+        updateSegmentTimes: (segmentId, startTimeSec, endTimeSec) => {
+          const start = Math.max(0, startTimeSec);
+          const end = Math.max(start + 0.02, endTimeSec);
+          set((s) => ({
+            segments: s.segments.map((seg) => (seg.id === segmentId ? { ...seg, startTimeSec: start, endTimeSec: end } : seg)),
             updatedAtMs: nowMs(),
           }));
         },

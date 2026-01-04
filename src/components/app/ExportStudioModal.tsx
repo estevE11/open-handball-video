@@ -1,9 +1,13 @@
+import { Check, ChevronsUpDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { formatTimecode } from '@/lib/time';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { useProjectStore } from '@/store/projectStore';
@@ -19,19 +23,37 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const segments = useProjectStore((s) => s.segments);
   const videoFile = useProjectStore((s) => s.session.videoFile);
 
-  const [mainLabelId, setMainLabelId] = useState<string>('__any__');
-  const [secondaryId, setSecondaryId] = useState<string>('__any__');
+  const [mainLabelIds, setMainLabelIds] = useState<string[]>([]);
+  const [secondaryIds, setSecondaryIds] = useState<string[]>([]);
   const [isRendering, setIsRendering] = useState(false);
   const [phase, setPhase] = useState<string>('');
   const [ratio, setRatio] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
+    const mainSet = new Set(mainLabelIds);
+    const secSet = new Set(secondaryIds);
     return segments
-      .filter((seg) => (mainLabelId === '__any__' ? true : seg.mainLabelId === mainLabelId))
-      .filter((seg) => (secondaryId === '__any__' ? true : seg.secondaryLabelIds.includes(secondaryId)))
+      .filter((seg) => (mainSet.size === 0 ? true : mainSet.has(seg.mainLabelId)))
+      .filter((seg) => (secSet.size === 0 ? true : seg.secondaryLabelIds.some((id) => secSet.has(id))))
       .sort((a, b) => a.startTimeSec - b.startTimeSec);
-  }, [mainLabelId, secondaryId, segments]);
+  }, [mainLabelIds, secondaryIds, segments]);
+
+  const mainSummary = useMemo(() => {
+    if (mainLabelIds.length === 0) return 'Any';
+    if (mainLabelIds.length === 1) return mainLabels.find((l) => l.id === mainLabelIds[0])?.name ?? '1 selected';
+    return `${mainLabelIds.length} selected`;
+  }, [mainLabelIds, mainLabels]);
+
+  const secondarySummary = useMemo(() => {
+    if (secondaryIds.length === 0) return 'Any';
+    if (secondaryIds.length === 1) return secondaryLabels.find((l) => l.id === secondaryIds[0])?.name ?? '1 selected';
+    return `${secondaryIds.length} selected`;
+  }, [secondaryIds, secondaryLabels]);
+
+  function toggleId(list: string[], id: string): string[] {
+    return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  }
 
   function downloadBlob(filename: string, blob: Blob) {
     const url = URL.createObjectURL(blob);
@@ -56,36 +78,134 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <div className="text-xs font-medium text-muted-foreground">Main Label</div>
-              <Select value={mainLabelId} onValueChange={setMainLabelId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__any__">Any</SelectItem>
-                  {mainLabels.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="h-9 justify-between">
+                    <span className="truncate">{mainSummary}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[420px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search main labels..." />
+                    <CommandList>
+                      <CommandEmpty>No labels found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          onSelect={() => setMainLabelIds([])}
+                          className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={cn('h-4 w-4 rounded-sm border')} aria-hidden />
+                            <span>Any</span>
+                          </div>
+                          {mainLabelIds.length === 0 ? <Check className="h-4 w-4" /> : null}
+                        </CommandItem>
+                        {mainLabels.map((l) => {
+                          const selected = mainLabelIds.includes(l.id);
+                          return (
+                            <CommandItem key={l.id} onSelect={() => setMainLabelIds((prev) => toggleId(prev, l.id))}>
+                              <div className="flex w-full items-center gap-2">
+                                <span className="h-4 w-4 rounded-sm" style={{ backgroundColor: l.color }} aria-hidden />
+                                <span className="flex-1 truncate">{l.name}</span>
+                                {selected ? <Check className="h-4 w-4" /> : null}
+                              </div>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {mainLabelIds.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {mainLabelIds.slice(0, 6).map((id) => {
+                    const label = mainLabels.find((l) => l.id === id);
+                    if (!label) return null;
+                    return (
+                      <Badge
+                        key={id}
+                        variant="secondary"
+                        className="cursor-pointer"
+                        onClick={() => setMainLabelIds((prev) => toggleId(prev, id))}
+                        title="Click to remove"
+                      >
+                        {label.name}
+                      </Badge>
+                    );
+                  })}
+                  {mainLabelIds.length > 6 ? (
+                    <Badge variant="secondary">+{mainLabelIds.length - 6}</Badge>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="grid gap-1.5">
               <div className="text-xs font-medium text-muted-foreground">Secondary Label includes</div>
-              <Select value={secondaryId} onValueChange={setSecondaryId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__any__">Any</SelectItem>
-                  {secondaryLabels.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="h-9 justify-between">
+                    <span className="truncate">{secondarySummary}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[420px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search secondary labels..." />
+                    <CommandList>
+                      <CommandEmpty>No tags found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem onSelect={() => setSecondaryIds([])} className="flex items-center justify-between">
+                          <span>Any</span>
+                          {secondaryIds.length === 0 ? <Check className="h-4 w-4" /> : null}
+                        </CommandItem>
+                        {secondaryLabels.map((l) => {
+                          const selected = secondaryIds.includes(l.id);
+                          return (
+                            <CommandItem key={l.id} onSelect={() => setSecondaryIds((prev) => toggleId(prev, l.id))}>
+                              <div className="flex w-full items-center gap-2">
+                                <span className="flex-1 truncate">{l.name}</span>
+                                {l.hotkey ? (
+                                  <span className="rounded border bg-background px-1 font-mono text-[10px] text-muted-foreground">
+                                    {l.hotkey}
+                                  </span>
+                                ) : null}
+                                {selected ? <Check className="h-4 w-4" /> : null}
+                              </div>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {secondaryIds.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {secondaryIds.slice(0, 6).map((id) => {
+                    const label = secondaryLabels.find((l) => l.id === id);
+                    if (!label) return null;
+                    return (
+                      <Badge
+                        key={id}
+                        variant="secondary"
+                        className="cursor-pointer"
+                        onClick={() => setSecondaryIds((prev) => toggleId(prev, id))}
+                        title="Click to remove"
+                      >
+                        {label.name}
+                      </Badge>
+                    );
+                  })}
+                  {secondaryIds.length > 6 ? (
+                    <Badge variant="secondary">+{secondaryIds.length - 6}</Badge>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 
