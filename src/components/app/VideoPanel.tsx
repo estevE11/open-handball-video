@@ -1,0 +1,188 @@
+import { Pause, Play, SkipBack, SkipForward, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { Panel } from '@/components/app/Panel';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { cn } from '@/lib/utils';
+import { formatTimecode } from '@/lib/time';
+import { useProjectStore } from '@/store/projectStore';
+import { useVideoStore } from '@/store/videoStore';
+
+export function VideoPanel() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const videoSourceUrl = useProjectStore((s) => s.session.videoSourceUrl);
+  const videoFile = useProjectStore((s) => s.session.videoFile);
+  const setVideoFile = useProjectStore((s) => s.setVideoFile);
+  const setVideoDurationSec = useProjectStore((s) => s.setVideoDurationSec);
+  const fps = useProjectStore((s) => s.settings.fps);
+
+  const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
+  const durationSec = useVideoStore((s) => s.durationSec);
+  const isPlaying = useVideoStore((s) => s.isPlaying);
+  const playbackRate = useVideoStore((s) => s.playbackRate);
+  const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
+  const setDurationSec = useVideoStore((s) => s.setDurationSec);
+  const setIsPlaying = useVideoStore((s) => s.setIsPlaying);
+  const setPlaybackRate = useVideoStore((s) => s.setPlaybackRate);
+
+  const [scrubValue, setScrubValue] = useState<number[]>([0]);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const canScrub = durationSec > 0;
+  const sliderValue = isScrubbing ? scrubValue : [currentTimeSec];
+
+  // Keep the HTMLVideoElement synced with store state.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (!Number.isFinite(currentTimeSec)) return;
+    const delta = Math.abs(el.currentTime - currentTimeSec);
+    // Avoid thrashing when video is naturally progressing.
+    if (delta > 0.075 && !el.seeking) {
+      el.currentTime = currentTimeSec;
+    }
+  }, [currentTimeSec]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (isPlaying) {
+      void el.play().catch(() => setIsPlaying(false));
+    } else {
+      el.pause();
+    }
+  }, [isPlaying, setIsPlaying]);
+
+  const right = useMemo(() => {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="font-mono text-xs text-muted-foreground">
+          {formatTimecode(currentTimeSec)} / {formatTimecode(durationSec || 0)}
+        </div>
+      </div>
+    );
+  }, [currentTimeSec, durationSec]);
+
+  function step(deltaFrames: number) {
+    const frameSec = 1 / Math.max(1, fps || 30);
+    const next = Math.max(0, currentTimeSec + deltaFrames * frameSec);
+    setCurrentTimeSec(next);
+  }
+
+  return (
+    <Panel title="Player" right={right}>
+      <div className="grid h-full min-h-0 min-w-0 grid-rows-[1fr_auto] gap-2 p-2">
+        <div className={cn('relative min-h-0 overflow-hidden rounded-md border bg-black')}>
+          {videoSourceUrl ? (
+            <video
+              ref={videoRef}
+              src={videoSourceUrl}
+              className="h-full w-full object-contain"
+              onTimeUpdate={(e) => setCurrentTimeSec((e.currentTarget as HTMLVideoElement).currentTime)}
+              onLoadedMetadata={(e) => {
+                const el = e.currentTarget as HTMLVideoElement;
+                setDurationSec(el.duration || 0);
+                if (el.duration) setVideoDurationSec(el.duration);
+              }}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              controls={false}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <div className="text-sm font-medium text-white">No video loaded</div>
+                <div className="text-xs text-white/70">Upload a local video file to start labeling.</div>
+                <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload video…
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const url = URL.createObjectURL(file);
+              setVideoFile(file, url);
+              e.currentTarget.value = '';
+            }}
+          />
+        </div>
+
+        <div className="rounded-md border bg-card p-2">
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="icon" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? 'Pause' : 'Play'}>
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+
+            <Button variant="outline" size="icon" onClick={() => step(-1)} aria-label="Frame backward">
+              <SkipBack className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={() => step(1)} aria-label="Frame forward">
+              <SkipForward className="h-4 w-4" />
+            </Button>
+
+            <div className="mx-2 h-6 w-px bg-border" />
+
+            <div className="min-w-0 flex-1">
+              <Slider
+                value={sliderValue}
+                min={0}
+                max={Math.max(0.001, durationSec || 0.001)}
+                step={0.01}
+                disabled={!canScrub}
+                onValueChange={(v) => {
+                  setIsScrubbing(true);
+                  setScrubValue(v);
+                }}
+                onValueCommit={(v) => {
+                  setCurrentTimeSec(v[0] ?? 0);
+                  setIsScrubbing(false);
+                }}
+              />
+            </div>
+
+            <div className="mx-2 h-6 w-px bg-border" />
+
+            <Select
+              value={String(playbackRate)}
+              onValueChange={(v) => setPlaybackRate((Number(v) as 0.5 | 1 | 2) ?? 1)}
+              disabled={!videoSourceUrl}
+            >
+              <SelectTrigger className="h-8 w-[110px]">
+                <SelectValue placeholder="Speed" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0.5">0.5×</SelectItem>
+                <SelectItem value="1">1×</SelectItem>
+                <SelectItem value="2">2×</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {videoFile ? (
+              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{videoFile.name}</div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+
