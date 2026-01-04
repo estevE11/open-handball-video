@@ -15,7 +15,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function useGlobalHotkeys() {
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
-  const fps = useProjectStore((s) => s.settings.fps);
+  const fps = useProjectStore((s) => s.videoMeta?.fps ?? 30);
   const createSegmentFromTrigger = useProjectStore((s) => s.createSegmentFromTrigger);
   const appendSecondaryToLastSegment = useProjectStore((s) => s.appendSecondaryToLastSegment);
 

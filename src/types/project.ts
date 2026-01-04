@@ -40,6 +40,8 @@ export type VideoMeta = {
   fileType: string;
   lastModified: number;
   durationSec?: number;
+  /** Detected from ffprobe (avg_frame_rate / r_frame_rate). */
+  fps?: number;
 };
 
 export type ProjectData = {

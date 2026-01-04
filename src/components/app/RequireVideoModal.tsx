@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { probeVideoFps } from '@/lib/videoProbe';
 import { useProjectStore } from '@/store/projectStore';
 
 export function RequireVideoModal() {
@@ -9,6 +10,7 @@ export function RequireVideoModal() {
   const videoMeta = useProjectStore((s) => s.videoMeta);
   const hasVideoFile = useProjectStore((s) => !!s.session.videoFile);
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
+  const setVideoFps = useProjectStore((s) => s.setVideoFps);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -37,11 +39,19 @@ export function RequireVideoModal() {
           type="file"
           accept="video/*"
           className="hidden"
-          onChange={(e) => {
+          onChange={async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
             const url = URL.createObjectURL(file);
             setVideoFile(file, url);
+            try {
+              const fps = await probeVideoFps(file);
+              if (fps && useProjectStore.getState().session.videoFile === file) {
+                setVideoFps(fps);
+              }
+            } catch (err) {
+              console.warn('[video] fps probe failed', err);
+            }
             e.currentTarget.value = '';
           }}
         />

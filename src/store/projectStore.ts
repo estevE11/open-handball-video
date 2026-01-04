@@ -27,6 +27,7 @@ export type ProjectState = ProjectData & {
    */
   setVideoFile: (file: File, videoSourceUrl: string, durationSec?: number) => void;
   setVideoDurationSec: (durationSec: number) => void;
+  setVideoFps: (fps: number) => void;
   clearVideoSourceUrl: () => void;
 
   upsertMainLabel: (label: MainLabel) => void;
@@ -158,6 +159,14 @@ export const useProjectStore = create<ProjectState>()(
           if (!Number.isFinite(durationSec) || durationSec <= 0) return;
           set((s) => ({
             videoMeta: s.videoMeta ? { ...s.videoMeta, durationSec } : s.videoMeta,
+            updatedAtMs: nowMs(),
+          }));
+        },
+
+        setVideoFps: (fps) => {
+          if (!Number.isFinite(fps) || fps <= 0) return;
+          set((s) => ({
+            videoMeta: s.videoMeta ? { ...s.videoMeta, fps } : s.videoMeta,
             updatedAtMs: nowMs(),
           }));
         },

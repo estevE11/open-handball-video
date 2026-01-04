@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { formatTimecode } from '@/lib/time';
+import { probeVideoFps } from '@/lib/videoProbe';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
 
@@ -18,7 +19,8 @@ export function VideoPanel() {
   const videoFile = useProjectStore((s) => s.session.videoFile);
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
   const setVideoDurationSec = useProjectStore((s) => s.setVideoDurationSec);
-  const fps = useProjectStore((s) => s.settings.fps);
+  const setVideoFps = useProjectStore((s) => s.setVideoFps);
+  const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
 
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const durationSec = useVideoStore((s) => s.durationSec);
@@ -73,7 +75,7 @@ export function VideoPanel() {
   }, [currentTimeSec, durationSec]);
 
   function step(deltaFrames: number) {
-    const frameSec = 1 / Math.max(1, fps || 30);
+    const frameSec = 1 / Math.max(1, detectedFps || 30);
     const next = Math.max(0, currentTimeSec + deltaFrames * frameSec);
     setCurrentTimeSec(next);
   }
@@ -115,11 +117,20 @@ export function VideoPanel() {
             type="file"
             accept="video/*"
             className="hidden"
-            onChange={(e) => {
+            onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
               const url = URL.createObjectURL(file);
               setVideoFile(file, url);
+              // Detect FPS via ffprobe (async). Only apply if this is still the active file.
+              try {
+                const fps = await probeVideoFps(file);
+                if (fps && useProjectStore.getState().session.videoFile === file) {
+                  setVideoFps(fps);
+                }
+              } catch (err) {
+                console.warn('[video] fps probe failed', err);
+              }
               e.currentTarget.value = '';
             }}
           />

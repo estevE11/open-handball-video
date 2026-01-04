@@ -20,23 +20,17 @@ type SettingsModalProps = {
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
-  const settings = useProjectStore((s) => s.settings);
+  const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
 
   const upsertMainLabel = useProjectStore((s) => s.upsertMainLabel);
   const deleteMainLabel = useProjectStore((s) => s.deleteMainLabel);
   const upsertSecondaryLabel = useProjectStore((s) => s.upsertSecondaryLabel);
   const deleteSecondaryLabel = useProjectStore((s) => s.deleteSecondaryLabel);
-  const updateSettings = useProjectStore((s) => s.updateSettings);
 
   const [tab, setTab] = useState<'main' | 'secondary' | 'settings'>('main');
 
   const mainSorted = useMemo(() => [...mainLabels].sort((a, b) => a.name.localeCompare(b.name)), [mainLabels]);
   const secondarySorted = useMemo(() => [...secondaryLabels].sort((a, b) => a.name.localeCompare(b.name)), [secondaryLabels]);
-
-  function setFps(fps: number) {
-    const next = Math.max(1, Math.min(240, fps || 30));
-    updateSettings({ fps: next });
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -210,12 +204,14 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                   <Input
                     id="fps"
                     type="number"
-                    value={settings.fps}
-                    onChange={(e) => setFps(Number(e.target.value))}
+                    value={detectedFps ?? 30}
+                    disabled
                     className="h-8"
                   />
                 </div>
-                <div className="mt-2 text-xs text-muted-foreground">Used for frame forward/backward. Default is 30 fps.</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Detected from the loaded video via ffprobe. (If unknown, falls back to 30 fps.)
+                </div>
               </div>
             </div>
           </TabsContent>
