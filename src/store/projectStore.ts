@@ -26,6 +26,7 @@ export type ProjectState = ProjectData & {
    * plus the non-persisted blob URL for actual playback.
    */
   setVideoFile: (file: File, videoSourceUrl: string, durationSec?: number) => void;
+  setElectronVideo: (videoUrl: string, meta: VideoMeta) => void;
   setVideoDurationSec: (durationSec: number) => void;
   setVideoFps: (fps: number) => void;
   clearVideoSourceUrl: () => void;
@@ -153,6 +154,14 @@ export const useProjectStore = create<ProjectState>()(
             updatedAtMs: nowMs(),
             session: { ...s.session, videoSourceUrl, videoFile: file },
           }));
+        },
+
+        setElectronVideo: (videoUrl, meta) => {
+           set((s) => ({
+             videoMeta: meta,
+             updatedAtMs: nowMs(),
+             session: { ...s.session, videoSourceUrl: videoUrl, videoFile: null },
+           }));
         },
 
         setVideoDurationSec: (durationSec) => {
