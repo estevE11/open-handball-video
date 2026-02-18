@@ -20,7 +20,8 @@ export function VideoPanel() {
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
   const setVideoDurationSec = useProjectStore((s) => s.setVideoDurationSec);
   const setVideoFps = useProjectStore((s) => s.setVideoFps);
-  const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
+  const videoMeta = useProjectStore((s) => s.videoMeta);
+  const detectedFps = videoMeta?.fps;
 
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const durationSec = useVideoStore((s) => s.durationSec);
@@ -186,8 +187,8 @@ export function VideoPanel() {
               </SelectContent>
             </Select>
 
-            {videoFile ? (
-              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{videoFile.name}</div>
+            {videoMeta?.fileName ? (
+              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{videoMeta.fileName}</div>
             ) : null}
           </div>
         </div>

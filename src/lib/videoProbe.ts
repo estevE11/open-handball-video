@@ -19,7 +19,7 @@ function roundFps(v: number): number {
   return Math.round(v * 1000) / 1000;
 }
 
-export async function probeVideoFps(file: File): Promise<number | null> {
+export async function probeVideoFps(file: File | string): Promise<number | null> {
   const ffmpeg = await getFFmpeg();
 
   const inputName = `probe_${Date.now()}.mp4`;

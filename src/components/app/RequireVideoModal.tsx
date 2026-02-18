@@ -8,7 +8,7 @@ import { useProjectStore } from '@/store/projectStore';
 export function RequireVideoModal() {
   const hydrated = useProjectStore((s) => s.session.hydrated);
   const videoMeta = useProjectStore((s) => s.videoMeta);
-  const hasVideoFile = useProjectStore((s) => !!s.session.videoFile);
+  const hasVideoFile = useProjectStore((s) => !!s.session.videoFile || (!!window.electron && !!s.session.videoSourceUrl));
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
   const setVideoFps = useProjectStore((s) => s.setVideoFps);
 
