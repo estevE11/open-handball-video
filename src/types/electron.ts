@@ -4,6 +4,14 @@ export interface ElectronAPI {
   getVideos: () => Promise<VideoFile[]>;
   loadProject: (videoFileName: string) => Promise<ProjectData | null>;
   saveProject: (videoFileName: string, projectData: ProjectData) => Promise<boolean>;
+  readFile: (filePath: string) => Promise<Uint8Array>;
+  runNativeExport: (opts: { 
+    inputPath: string; 
+    outputPath: string; 
+    segments: any[]; 
+    addGap: boolean; 
+    mainLabels: any[] 
+  }) => Promise<boolean>;
 }
 
 export interface VideoFile {

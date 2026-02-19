@@ -36,6 +36,41 @@ export async function exportFilteredSegmentsToMp4(
   const addGap = opts.addGap ?? false;
   const mainLabels = opts.mainLabels ?? [];
 
+  // ELECTRON NATIVE EXPORT PATH
+  if (window.electron && typeof videoInput === 'string' && videoInput.startsWith('file://')) {
+    const inputPath = decodeURIComponent(videoInput.replace(/^file:\/\//, ''));
+    // Use a unique temp path for the native export
+    const outputPath = inputPath.replace(/\.[^/.]+$/, "") + `_export_${Date.now()}.mp4`;
+    
+    console.info('[export] using native electron export', { inputPath, outputPath });
+    onProgress('native:export', 0);
+    
+    try {
+      await window.electron.runNativeExport({
+        inputPath,
+        outputPath,
+        segments,
+        addGap,
+        mainLabels
+      });
+      onProgress('native:export', 1);
+
+      // Read the resulting file back as a blob
+      const data = await window.electron.readFile(outputPath);
+      
+      // Ensure we return a Blob backed by a normal ArrayBuffer (not SharedArrayBuffer).
+      const buffer = new Uint8Array(data.length);
+      buffer.set(data);
+      const blob = new Blob([buffer], { type: 'video/mp4' });
+      
+      return blob;
+    } catch (err) {
+      console.error('[export] native export failed', err);
+      throw new Error(`Native export failed: ${err}. Ensure FFmpeg is installed on your system.`);
+    }
+  }
+
+  // BROWSER / WASM EXPORT PATH
   // Expanded group so logs are visible without clicking.
   console.group('[export] start');
   if (videoInput instanceof File) {
@@ -74,7 +109,15 @@ export async function exportFilteredSegmentsToMp4(
   onProgress('ffmpeg:write-input', 0);
   console.info('[export] writing input to ffmpeg FS', { inputName });
   try {
-    const videoData = await fetchFile(videoInput);
+    let videoData: Uint8Array;
+    if (typeof videoInput === 'string' && videoInput.startsWith('file://') && window.electron) {
+      // Strip protocol and handle URL encoding (spaces, etc)
+      const filePath = decodeURIComponent(videoInput.replace(/^file:\/\//, ''));
+      console.info('[export] reading local file via electron', filePath);
+      videoData = await window.electron.readFile(filePath);
+    } else {
+      videoData = await fetchFile(videoInput);
+    }
     await ffmpeg.writeFile(inputName, videoData);
   } catch (err) {
     console.error('[export] failed to fetch video input', err);
