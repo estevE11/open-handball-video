@@ -57,7 +57,11 @@ export async function exportFilteredSegmentsToMp4(
   // Load font file for overlays
   const fontName = 'font.ttf';
   try {
-    const fontResponse = await fetch('/fonts/Roboto-Bold.ttf');
+    // Construct font URL relative to the current page to handle Electron file:// and Vite dev/prod
+    const fontUrl = new URL('fonts/Roboto-Bold.ttf', window.location.href).href;
+    console.info('[export] fetching font from', fontUrl);
+    const fontResponse = await fetch(fontUrl);
+    if (!fontResponse.ok) throw new Error(`HTTP error! status: ${fontResponse.status}`);
     const fontData = await fontResponse.arrayBuffer();
     await ffmpeg.writeFile(fontName, new Uint8Array(fontData));
     console.info('[export] font loaded');
@@ -69,7 +73,13 @@ export async function exportFilteredSegmentsToMp4(
   await safeDelete(ffmpeg, inputName);
   onProgress('ffmpeg:write-input', 0);
   console.info('[export] writing input to ffmpeg FS', { inputName });
-  await ffmpeg.writeFile(inputName, await fetchFile(videoInput));
+  try {
+    const videoData = await fetchFile(videoInput);
+    await ffmpeg.writeFile(inputName, videoData);
+  } catch (err) {
+    console.error('[export] failed to fetch video input', err);
+    throw new Error(`Could not load video file for export. If you are using Electron, ensure the file still exists at the original path. (Error: ${err})`);
+  }
   onProgress('ffmpeg:write-input', 1);
   console.info('[export] wrote input', { inputName });
 
