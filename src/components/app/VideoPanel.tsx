@@ -36,6 +36,10 @@ export function VideoPanel() {
 
   const [scrubValue, setScrubValue] = useState<number[]>([0]);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [hoverX, setHoverX] = useState(0);
+  const sliderRef = useRef<HTMLDivElement | null>(null);
+
   const canScrub = durationSec > 0;
   const sliderValue = isScrubbing ? scrubValue : [currentTimeSec];
 
@@ -93,6 +97,15 @@ export function VideoPanel() {
     const next = Math.max(0, currentTimeSec + deltaFrames * frameSec);
     setCurrentTimeSec(next);
   }
+
+  const handleSliderMouseMove = (e: React.MouseEvent) => {
+    if (!sliderRef.current || !durationSec) return;
+    const rect = sliderRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    setHoverTime(ratio * durationSec);
+    setHoverX(x);
+  };
 
   return (
     <Panel title="Player" right={right}>
@@ -173,7 +186,15 @@ export function VideoPanel() {
 
             <div className="mx-2 h-6 w-px bg-border" />
 
-            <div className="min-w-0 flex-1">
+            <div className="relative min-w-0 flex-1" ref={sliderRef} onMouseMove={handleSliderMouseMove} onMouseLeave={() => setHoverTime(null)}>
+              {hoverTime !== null && (
+                <div 
+                  className="absolute bottom-full mb-2 -translate-x-1/2 pointer-events-none z-50 px-2 py-1 bg-popover text-popover-foreground border rounded shadow-md text-[10px] font-mono whitespace-nowrap transition-opacity duration-150"
+                  style={{ left: hoverX }}
+                >
+                  {formatTimecode(hoverTime)}
+                </div>
+              )}
               <Slider
                 value={sliderValue}
                 min={0}
