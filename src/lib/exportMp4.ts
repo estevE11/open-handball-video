@@ -125,7 +125,7 @@ export async function exportFilteredSegmentsToMp4(
     // Overlay logic
     const label = mainLabels.find(l => l.id === seg.mainLabelId);
     const primaryText = label?.defaultName || label?.name || 'Tag';
-    const secondaryText = (label?.name !== label?.defaultName) ? label?.name : null;
+    const secondaryText = (label?.defaultName && label?.name !== label?.defaultName) ? label?.name : null;
 
     let vf = 'format=yuv420p';
     vf += `,drawtext=fontfile=${fontName}:text='${escapeFfmpegText(primaryText)}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
