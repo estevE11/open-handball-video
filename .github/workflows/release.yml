@@ -24,13 +24,12 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build Renderer
-        run: npm run build
-
-      - name: Build Electron Main
-        run: npx tsc -p electron/tsconfig.json
+      - name: Build Renderer and Electron Main
+        run: |
+          npm run build
+          npx tsc -p electron/tsconfig.json
 
       - name: Build and Publish Electron App
         run: npx electron-builder --publish always
