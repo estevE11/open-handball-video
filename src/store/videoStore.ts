@@ -4,11 +4,13 @@ type VideoRuntimeState = {
   currentTimeSec: number;
   durationSec: number;
   isPlaying: boolean;
+  isMuted: boolean;
   playbackRate: 0.5 | 1 | 2;
 
   setCurrentTimeSec: (t: number) => void;
   setDurationSec: (d: number) => void;
   setIsPlaying: (p: boolean) => void;
+  setIsMuted: (m: boolean) => void;
   setPlaybackRate: (r: 0.5 | 1 | 2) => void;
 
   reset: () => void;
@@ -18,6 +20,7 @@ export const useVideoStore = create<VideoRuntimeState>((set) => ({
   currentTimeSec: 0,
   durationSec: 0,
   isPlaying: false,
+  isMuted: false,
   playbackRate: 1,
 
   setCurrentTimeSec: (t) =>
@@ -28,9 +31,10 @@ export const useVideoStore = create<VideoRuntimeState>((set) => ({
     }),
   setDurationSec: (d) => set({ durationSec: Math.max(0, d) }),
   setIsPlaying: (p) => set({ isPlaying: p }),
+  setIsMuted: (m) => set({ isMuted: m }),
   setPlaybackRate: (r) => set({ playbackRate: r }),
 
-  reset: () => set({ currentTimeSec: 0, durationSec: 0, isPlaying: false, playbackRate: 1 }),
+  reset: () => set({ currentTimeSec: 0, durationSec: 0, isPlaying: false, isMuted: false, playbackRate: 1 }),
 }));
 
 

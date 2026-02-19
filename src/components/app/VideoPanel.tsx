@@ -1,4 +1,4 @@
-import { Pause, Play, SkipBack, SkipForward, Upload } from 'lucide-react';
+import { Pause, Play, SkipBack, SkipForward, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Panel } from '@/components/app/Panel';
@@ -26,10 +26,12 @@ export function VideoPanel() {
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const durationSec = useVideoStore((s) => s.durationSec);
   const isPlaying = useVideoStore((s) => s.isPlaying);
+  const isMuted = useVideoStore((s) => s.isMuted);
   const playbackRate = useVideoStore((s) => s.playbackRate);
   const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
   const setDurationSec = useVideoStore((s) => s.setDurationSec);
   const setIsPlaying = useVideoStore((s) => s.setIsPlaying);
+  const setIsMuted = useVideoStore((s) => s.setIsMuted);
   const setPlaybackRate = useVideoStore((s) => s.setPlaybackRate);
 
   const [scrubValue, setScrubValue] = useState<number[]>([0]);
@@ -59,6 +61,12 @@ export function VideoPanel() {
     if (!el) return;
     el.playbackRate = playbackRate;
   }, [playbackRate]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = isMuted;
+  }, [isMuted]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -157,6 +165,10 @@ export function VideoPanel() {
             </Button>
             <Button variant="outline" size="icon" onClick={() => step(1)} aria-label="Frame forward">
               <SkipForward className="h-4 w-4" />
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={() => setIsMuted(!isMuted)} aria-label={isMuted ? 'Unmute' : 'Mute'}>
+              {isMuted ? <VolumeX className="h-4 w-4 text-destructive" /> : <Volume2 className="h-4 w-4" />}
             </Button>
 
             <div className="mx-2 h-6 w-px bg-border" />
