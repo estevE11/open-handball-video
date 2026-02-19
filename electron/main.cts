@@ -3,6 +3,13 @@ import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
 
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
+
+// Correctly handle ASAR paths for binaries
+const ffmpegPath = ffmpegInstaller.path.replace('app.asar', 'app.asar.unpacked');
+const ffprobePath = ffprobeInstaller.path.replace('app.asar', 'app.asar.unpacked');
+
 // Constants
 const APP_FOLDER_NAME = 'open-handball-video';
 const SAVES_FOLDER_NAME = '.saves';
@@ -164,7 +171,7 @@ ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segme
       let height = 720;
       let sampleRate = 48000;
       try {
-        const probeProc = spawn('ffprobe', [
+        const probeProc = spawn(ffprobePath, [
           '-v', 'error',
           '-select_streams', 'v:0',
           '-show_entries', 'stream=width,height',
@@ -180,7 +187,7 @@ ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segme
           height = parseInt(dimensions[1], 10);
         }
 
-        const audioProbeProc = spawn('ffprobe', [
+        const audioProbeProc = spawn(ffprobePath, [
           '-v', 'error',
           '-select_streams', 'a:0',
           '-show_entries', 'stream=sample_rate',
@@ -200,7 +207,7 @@ ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segme
       // Check for drawtext support
       let hasDrawtext = false;
       try {
-        const checkProc = spawn('ffmpeg', ['-filters'], { env });
+        const checkProc = spawn(ffmpegPath, ['-filters'], { env });
         let filtersOutput = '';
         checkProc.stdout.on('data', (data) => { filtersOutput += data.toString(); });
         await new Promise((res) => checkProc.on('close', res));
@@ -252,9 +259,11 @@ ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segme
 
       args.push('-filter_complex', filterComplex, '-map', '[outv]', '-map', '[outa]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', outputPath);
 
-      console.log('Running native ffmpeg:', args.join(' '));
+      console.log('Running native ffmpeg:', ffmpegPath, args.join(' '));
       
-      const proc = spawn('ffmpeg', args, { env });
+      const proc = spawn(ffmpegPath, args, { env });
+
+
 
       proc.stderr.on('data', (data) => {
         const msg = data.toString();
