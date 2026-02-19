@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { formatTimecode } from '@/lib/time';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
@@ -22,9 +24,11 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
   const segments = useProjectStore((s) => s.segments);
   const videoFile = useProjectStore((s) => s.session.videoFile);
+  const videoSourceUrl = useProjectStore((s) => s.session.videoSourceUrl);
 
   const [mainLabelIds, setMainLabelIds] = useState<string[]>([]);
   const [secondaryIds, setSecondaryIds] = useState<string[]>([]);
+  const [addGap, setAddGap] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [phase, setPhase] = useState<string>('');
   const [ratio, setRatio] = useState<number>(0);
@@ -65,6 +69,8 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
     a.remove();
     URL.revokeObjectURL(url);
   }
+
+  const activeVideoInput = videoFile || videoSourceUrl;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -209,6 +215,11 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             </div>
           </div>
 
+          <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/10">
+            <Checkbox id="add-gap" checked={addGap} onCheckedChange={(v) => setAddGap(!!v)} />
+            <Label htmlFor="add-gap" className="text-sm cursor-pointer">Add 0.5s black gap between clips</Label>
+          </div>
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -249,7 +260,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
           <div className="flex items-center justify-between">
             <div className="text-xs text-muted-foreground">
-              {videoFile ? `Video: ${videoFile.name}` : 'No video loaded. Upload a video to enable export.'}
+              {activeVideoInput ? `Video loaded` : 'No video loaded. Upload a video to enable export.'}
             </div>
             <div className="flex items-center gap-2">
               {error ? <div className="max-w-[520px] truncate text-xs text-destructive">{error}</div> : null}
@@ -259,23 +270,18 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                 </div>
               ) : null}
               <Button
-                disabled={!videoFile || filtered.length === 0 || isRendering}
+                disabled={!activeVideoInput || filtered.length === 0 || isRendering}
                 onClick={async () => {
-                  if (!videoFile) return;
+                  if (!activeVideoInput) return;
                   setIsRendering(true);
                   setError(null);
                   setPhase('ffmpeg:load');
                   setRatio(0);
                   try {
                     console.group('[Export Studio] Render MP4');
-                    console.info('videoFile', {
-                      name: videoFile.name,
-                      size: videoFile.size,
-                      type: videoFile.type,
-                      lastModified: videoFile.lastModified,
-                    });
                     console.info('segments (filtered)', filtered.length);
-                    const blob = await exportFilteredSegmentsToMp4(videoFile, filtered, 'export.mp4', {
+                    const blob = await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', {
+                      addGap,
                       onProgress: (p, r) => {
                         setPhase(p);
                         setRatio(r);

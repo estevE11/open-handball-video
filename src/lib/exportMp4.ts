@@ -17,6 +17,7 @@ async function safeDelete(ffmpeg: { deleteFile: (path: string) => Promise<boolea
 
 export type ExportMp4Options = {
   onProgress?: (phase: string, ratio: number) => void;
+  addGap?: boolean;
 };
 
 export async function exportFilteredSegmentsToMp4(
@@ -26,6 +27,7 @@ export async function exportFilteredSegmentsToMp4(
   opts: ExportMp4Options = {},
 ): Promise<Blob> {
   const onProgress = opts.onProgress ?? (() => {});
+  const addGap = opts.addGap ?? false;
 
   // Expanded group so logs are visible without clicking.
   console.group('[export] start');
@@ -68,6 +70,29 @@ export async function exportFilteredSegmentsToMp4(
     throw new Error('No segments to export.');
   }
   console.info('[export] segments (valid)', valid.length);
+
+  // If addGap is enabled, we create a 0.5s black clip matching the first clip's settings
+  const gapName = 'gap.mp4';
+  if (addGap) {
+    onProgress('ffmpeg:create-gap', 0);
+    console.info('[export] creating 0.5s black gap clip');
+    await safeDelete(ffmpeg, gapName);
+    // Take a small bit from the beginning and make it black/silent
+    await ffmpeg.exec([
+      '-hide_banner',
+      '-y',
+      '-ss', '0',
+      '-t', '0.5',
+      '-i', inputName,
+      '-vf', 'drawbox=t=fill:c=black',
+      '-af', 'volume=0',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-c:a', 'aac',
+      gapName
+    ]);
+    onProgress('ffmpeg:create-gap', 1);
+  }
 
   const clipNames: string[] = [];
   for (let i = 0; i < valid.length; i++) {
@@ -117,6 +142,10 @@ export async function exportFilteredSegmentsToMp4(
       console.warn('[export] re-encode failed, falling back to -c copy', { clipName });
       await ffmpeg.exec(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
     }
+
+    if (addGap && i < valid.length - 1) {
+      clipNames.push(gapName);
+    }
   }
   onProgress('ffmpeg:cut', 1);
 
@@ -132,6 +161,7 @@ export async function exportFilteredSegmentsToMp4(
   onProgress('ffmpeg:concat', 0);
   console.info('[export] concat start', { outName });
   try {
+    // Try stream copy first (fastest)
     await ffmpeg.exec(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', concatName, '-c', 'copy', outName]);
   } catch {
     // If stream copy concat fails (codec mismatch), re-encode the concat.
@@ -171,7 +201,9 @@ export async function exportFilteredSegmentsToMp4(
   // Best effort cleanup; keep ffmpeg loaded for next export.
   void safeDelete(ffmpeg, inputName);
   void safeDelete(ffmpeg, concatName);
-  for (const n of clipNames) void safeDelete(ffmpeg, n);
+  if (addGap) void safeDelete(ffmpeg, gapName);
+  // Only delete clips that were actually created uniquely
+  for (let i = 0; i < valid.length; i++) void safeDelete(ffmpeg, `clip_${i}.mp4`);
 
   const blob = new Blob([copy], { type: 'video/mp4' });
   console.info('[export] done', { bytes: blob.size });
