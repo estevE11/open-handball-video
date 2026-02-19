@@ -1,10 +1,15 @@
 import { fetchFile } from '@ffmpeg/util';
 
-import type { Segment } from '@/types/project';
+import type { MainLabel, Segment } from '@/types/project';
 import { getFFmpeg } from '@/lib/ffmpegSingleton';
 
 function toFixedSec(v: number): string {
   return (Math.max(0, v) || 0).toFixed(3);
+}
+
+function escapeFfmpegText(text: string): string {
+  // ffmpeg drawtext needs ':' and '\' escaped.
+  return text.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "'\\\\''");
 }
 
 async function safeDelete(ffmpeg: { deleteFile: (path: string) => Promise<boolean> }, path: string) {
@@ -18,6 +23,7 @@ async function safeDelete(ffmpeg: { deleteFile: (path: string) => Promise<boolea
 export type ExportMp4Options = {
   onProgress?: (phase: string, ratio: number) => void;
   addGap?: boolean;
+  mainLabels?: MainLabel[];
 };
 
 export async function exportFilteredSegmentsToMp4(
@@ -28,6 +34,7 @@ export async function exportFilteredSegmentsToMp4(
 ): Promise<Blob> {
   const onProgress = opts.onProgress ?? (() => {});
   const addGap = opts.addGap ?? false;
+  const mainLabels = opts.mainLabels ?? [];
 
   // Expanded group so logs are visible without clicking.
   console.group('[export] start');
@@ -46,6 +53,17 @@ export async function exportFilteredSegmentsToMp4(
   console.info('[export] calling getFFmpeg()…');
   const ffmpeg = await getFFmpeg((p) => onProgress('ffmpeg:load', p.ratio));
   console.info('[export] getFFmpeg() resolved (core loaded)');
+
+  // Load font file for overlays
+  const fontName = 'font.ttf';
+  try {
+    const fontResponse = await fetch('/fonts/Roboto-Bold.ttf');
+    const fontData = await fontResponse.arrayBuffer();
+    await ffmpeg.writeFile(fontName, new Uint8Array(fontData));
+    console.info('[export] font loaded');
+  } catch (err) {
+    console.warn('[export] failed to load font, overlay might look poor or fail', err);
+  }
 
   const inputName = `input_${Date.now()}.mp4`;
   await safeDelete(ffmpeg, inputName);
@@ -104,6 +122,17 @@ export async function exportFilteredSegmentsToMp4(
     const start = toFixedSec(seg.startTimeSec);
     const dur = toFixedSec(seg.endTimeSec - seg.startTimeSec);
 
+    // Overlay logic
+    const label = mainLabels.find(l => l.id === seg.mainLabelId);
+    const primaryText = label?.defaultName || label?.name || 'Tag';
+    const secondaryText = (label?.name !== label?.defaultName) ? label?.name : null;
+
+    let vf = 'format=yuv420p';
+    vf += `,drawtext=fontfile=${fontName}:text='${escapeFfmpegText(primaryText)}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
+    if (secondaryText) {
+      vf += `,drawtext=fontfile=${fontName}:text='${escapeFfmpegText(secondaryText)}':x=30:y=85:fontsize=22:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
+    }
+
     onProgress('ffmpeg:cut', i / valid.length);
     console.info('[export] cutting clip', {
       i: i + 1,
@@ -111,6 +140,7 @@ export async function exportFilteredSegmentsToMp4(
       clipName,
       start,
       dur,
+      vf,
     });
 
     // Prefer re-encode for reliability; fall back to stream copy if codec isn't available.
@@ -125,7 +155,7 @@ export async function exportFilteredSegmentsToMp4(
         '-i',
         inputName,
         '-vf',
-        'format=yuv420p',
+        vf,
         '-c:v',
         'libx264',
         '-preset',
@@ -138,8 +168,8 @@ export async function exportFilteredSegmentsToMp4(
         '128k',
         clipName,
       ]);
-    } catch {
-      console.warn('[export] re-encode failed, falling back to -c copy', { clipName });
+    } catch (err) {
+      console.warn('[export] re-encode failed, falling back to -c copy (no overlay)', { clipName, err });
       await ffmpeg.exec(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
     }
 
@@ -201,6 +231,7 @@ export async function exportFilteredSegmentsToMp4(
   // Best effort cleanup; keep ffmpeg loaded for next export.
   void safeDelete(ffmpeg, inputName);
   void safeDelete(ffmpeg, concatName);
+  void safeDelete(ffmpeg, fontName);
   if (addGap) void safeDelete(ffmpeg, gapName);
   // Only delete clips that were actually created uniquely
   for (let i = 0; i < valid.length; i++) void safeDelete(ffmpeg, `clip_${i}.mp4`);

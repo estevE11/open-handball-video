@@ -282,6 +282,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     console.info('segments (filtered)', filtered.length);
                     const blob = await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', {
                       addGap,
+                      mainLabels,
                       onProgress: (p, r) => {
                         setPhase(p);
                         setRatio(r);
