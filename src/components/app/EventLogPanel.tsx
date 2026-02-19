@@ -136,6 +136,10 @@ export function EventLogPanel() {
                   isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
                 )}
                 onClick={() => setSelectedSegmentId(seg.id)}
+                onDoubleClick={() => {
+                  setSelectedSegmentId(seg.id);
+                  setCurrentTimeSec(seg.startTimeSec);
+                }}
               >
                 <div
                   className="mt-1 h-3 w-3 shrink-0 rounded-sm"
