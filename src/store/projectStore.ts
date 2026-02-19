@@ -26,6 +26,7 @@ export type ProjectState = ProjectData & {
    * plus the non-persisted blob URL for actual playback.
    */
   setVideoFile: (file: File, videoSourceUrl: string, durationSec?: number) => void;
+  setElectronVideo: (videoUrl: string, meta: VideoMeta) => void;
   setVideoDurationSec: (durationSec: number) => void;
   setVideoFps: (fps: number) => void;
   clearVideoSourceUrl: () => void;
@@ -36,7 +37,8 @@ export type ProjectState = ProjectData & {
   deleteSecondaryLabel: (id: Id) => void;
 
   createSegmentFromTrigger: (mainLabelId: Id, triggerTimeSec: number) => Segment | null;
-  appendSecondaryToLastSegment: (secondaryLabelId: Id) => void;
+  toggleSecondaryOnSelectedSegment: (secondaryLabelId: Id) => void;
+  renameSegment: (segmentId: Id, name: string) => void;
   deleteSegment: (segmentId: Id) => void;
   updateSegmentTimes: (segmentId: Id, startTimeSec: number, endTimeSec: number) => void;
 
@@ -51,6 +53,9 @@ export type ProjectState = ProjectData & {
 
   /** Internal. */
   _setHydrated: (hydrated: boolean) => void;
+  /** Currently selected segment (for manual tag editing or append). */
+  selectedSegmentId: Id | null;
+  setSelectedSegmentId: (id: Id | null) => void;
   /** Internal: last segment created (for “append secondary tag”). */
   lastCreatedSegmentId: Id | null;
 };
@@ -127,10 +132,15 @@ export const useProjectStore = create<ProjectState>()(
       return {
         ...base,
         lastCreatedSegmentId: null,
+        selectedSegmentId: null,
         session: { videoSourceUrl: null, videoFile: null, hydrated: false },
 
         _setHydrated: (hydrated) => {
           set((s) => ({ session: { ...s.session, hydrated } }));
+        },
+
+        setSelectedSegmentId: (id) => {
+          set({ selectedSegmentId: id });
         },
 
         setVideoSourceUrl: (url) => {
@@ -153,6 +163,14 @@ export const useProjectStore = create<ProjectState>()(
             updatedAtMs: nowMs(),
             session: { ...s.session, videoSourceUrl, videoFile: file },
           }));
+        },
+
+        setElectronVideo: (videoUrl, meta) => {
+           set((s) => ({
+             videoMeta: meta,
+             updatedAtMs: nowMs(),
+             session: { ...s.session, videoSourceUrl: videoUrl, videoFile: null },
+           }));
         },
 
         setVideoDurationSec: (durationSec) => {
@@ -245,21 +263,32 @@ export const useProjectStore = create<ProjectState>()(
           set((s) => ({
             segments: [...s.segments, segment],
             lastCreatedSegmentId: segment.id,
+            selectedSegmentId: segment.id,
             updatedAtMs: nowMs(),
           }));
 
           return segment;
         },
 
-        appendSecondaryToLastSegment: (secondaryLabelId) => {
-          const segId = get().lastCreatedSegmentId;
+        toggleSecondaryOnSelectedSegment: (secondaryLabelId) => {
+          const segId = get().selectedSegmentId || get().lastCreatedSegmentId;
           if (!segId) return;
           set((s) => ({
             segments: s.segments.map((seg) => {
               if (seg.id !== segId) return seg;
-              if (seg.secondaryLabelIds.includes(secondaryLabelId)) return seg;
-              return { ...seg, secondaryLabelIds: [...seg.secondaryLabelIds, secondaryLabelId] };
+              const hasTag = seg.secondaryLabelIds.includes(secondaryLabelId);
+              const nextIds = hasTag
+                ? seg.secondaryLabelIds.filter((id) => id !== secondaryLabelId)
+                : [...seg.secondaryLabelIds, secondaryLabelId];
+              return { ...seg, secondaryLabelIds: nextIds };
             }),
+            updatedAtMs: nowMs(),
+          }));
+        },
+
+        renameSegment: (segmentId, name) => {
+          set((s) => ({
+            segments: s.segments.map((seg) => (seg.id === segmentId ? { ...seg, name } : seg)),
             updatedAtMs: nowMs(),
           }));
         },
@@ -268,6 +297,7 @@ export const useProjectStore = create<ProjectState>()(
           set((s) => ({
             segments: s.segments.filter((seg) => seg.id !== segmentId),
             lastCreatedSegmentId: s.lastCreatedSegmentId === segmentId ? null : s.lastCreatedSegmentId,
+            selectedSegmentId: s.selectedSegmentId === segmentId ? null : s.selectedSegmentId,
             updatedAtMs: nowMs(),
           }));
         },

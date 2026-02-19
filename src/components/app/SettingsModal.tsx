@@ -57,6 +57,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                   const l: MainLabel = {
                     id: createId(),
                     name: 'New Label',
+                    defaultName: 'New Label',
                     color: '#22c55e',
                     preRollSec: 2,
                     postRollSec: 3,
@@ -75,7 +76,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]"> </TableHead>
-                    <TableHead>Name</TableHead>
+                    <TableHead>Display Name</TableHead>
+                    <TableHead className="w-[100px]">Type</TableHead>
                     <TableHead className="w-[110px]">Color</TableHead>
                     <TableHead className="w-[120px]">Pre-roll (s)</TableHead>
                     <TableHead className="w-[120px]">Post-roll (s)</TableHead>
@@ -95,6 +97,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                           onChange={(e) => upsertMainLabel({ ...l, name: e.target.value })}
                           className="h-8"
                         />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground italic">
+                        {l.defaultName || 'Custom'}
                       </TableCell>
                       <TableCell>
                         <Input

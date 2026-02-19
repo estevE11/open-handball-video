@@ -20,7 +20,7 @@ export type ExportMp4Options = {
 };
 
 export async function exportFilteredSegmentsToMp4(
-  videoFile: File,
+  videoInput: File | string,
   segments: Segment[],
   outputName = 'export.mp4',
   opts: ExportMp4Options = {},
@@ -29,12 +29,16 @@ export async function exportFilteredSegmentsToMp4(
 
   // Expanded group so logs are visible without clicking.
   console.group('[export] start');
-  console.info('[export] input video', {
-    name: videoFile.name,
-    size: videoFile.size,
-    type: videoFile.type,
-    lastModified: videoFile.lastModified,
-  });
+  if (videoInput instanceof File) {
+    console.info('[export] input video', {
+      name: videoInput.name,
+      size: videoInput.size,
+      type: videoInput.type,
+      lastModified: videoInput.lastModified,
+    });
+  } else {
+    console.info('[export] input video URL', videoInput);
+  }
   console.info('[export] segments (raw)', segments.length);
 
   console.info('[export] calling getFFmpeg()…');
@@ -45,7 +49,7 @@ export async function exportFilteredSegmentsToMp4(
   await safeDelete(ffmpeg, inputName);
   onProgress('ffmpeg:write-input', 0);
   console.info('[export] writing input to ffmpeg FS', { inputName });
-  await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
+  await ffmpeg.writeFile(inputName, await fetchFile(videoInput));
   onProgress('ffmpeg:write-input', 1);
   console.info('[export] wrote input', { inputName });
 

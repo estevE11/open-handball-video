@@ -3,6 +3,8 @@ export type Id = string;
 export type MainLabel = {
   id: Id;
   name: string;
+  /** The original name given when the label was created. */
+  defaultName?: string;
   /** Tailwind-friendly hex is fine (e.g. "#ef4444"). */
   color: string;
   /** Seconds before the trigger time. */
@@ -21,6 +23,8 @@ export type SecondaryLabel = {
 
 export type Segment = {
   id: Id;
+  /** Optional name override for this specific segment. */
+  name?: string;
   startTimeSec: number;
   endTimeSec: number;
   mainLabelId: Id;

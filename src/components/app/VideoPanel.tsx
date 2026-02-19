@@ -14,13 +14,14 @@ import { useVideoStore } from '@/store/videoStore';
 export function VideoPanel() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastInternalTimeRef = useRef(0);
 
   const videoSourceUrl = useProjectStore((s) => s.session.videoSourceUrl);
-  const videoFile = useProjectStore((s) => s.session.videoFile);
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
   const setVideoDurationSec = useProjectStore((s) => s.setVideoDurationSec);
   const setVideoFps = useProjectStore((s) => s.setVideoFps);
-  const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
+  const videoMeta = useProjectStore((s) => s.videoMeta);
+  const detectedFps = videoMeta?.fps;
 
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const durationSec = useVideoStore((s) => s.durationSec);
@@ -41,9 +42,14 @@ export function VideoPanel() {
     const el = videoRef.current;
     if (!el) return;
     if (!Number.isFinite(currentTimeSec)) return;
+
+    // If the change is coming from the video itself (feedback loop), skip sync.
+    const feedbackDelta = Math.abs(currentTimeSec - lastInternalTimeRef.current);
+    if (feedbackDelta < 0.001) return;
+
     const delta = Math.abs(el.currentTime - currentTimeSec);
-    // Avoid thrashing when video is naturally progressing.
-    if (delta > 0.075 && !el.seeking) {
+    // Only force sync if the difference is significant (e.g. user clicked timeline).
+    if (delta > 0.15) {
       el.currentTime = currentTimeSec;
     }
   }, [currentTimeSec]);
@@ -89,7 +95,11 @@ export function VideoPanel() {
               ref={videoRef}
               src={videoSourceUrl}
               className="h-full w-full object-contain"
-              onTimeUpdate={(e) => setCurrentTimeSec((e.currentTarget as HTMLVideoElement).currentTime)}
+              onTimeUpdate={(e) => {
+                const t = (e.currentTarget as HTMLVideoElement).currentTime;
+                lastInternalTimeRef.current = t;
+                setCurrentTimeSec(t);
+              }}
               onLoadedMetadata={(e) => {
                 const el = e.currentTarget as HTMLVideoElement;
                 setDurationSec(el.duration || 0);
@@ -186,8 +196,8 @@ export function VideoPanel() {
               </SelectContent>
             </Select>
 
-            {videoFile ? (
-              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{videoFile.name}</div>
+            {videoMeta?.fileName ? (
+              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{videoMeta.fileName}</div>
             ) : null}
           </div>
         </div>

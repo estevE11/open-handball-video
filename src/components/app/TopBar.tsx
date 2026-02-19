@@ -1,4 +1,4 @@
-import { Download, FolderOpen, Settings, Upload } from 'lucide-react';
+import { ChevronLeft, Download, FolderOpen, Settings, Upload } from 'lucide-react';
 import { useMemo, useRef } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,11 @@ import { useVideoStore } from '@/store/videoStore';
 type TopBarProps = {
   onOpenSettings: () => void;
   onOpenExport: () => void;
+  showBackButton?: boolean;
+  onBack?: () => void;
 };
 
-export function TopBar({ onOpenSettings, onOpenExport }: TopBarProps) {
+export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }: TopBarProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const exportProjectJson = useProjectStore((s) => s.exportProjectJson);
@@ -54,41 +56,50 @@ export function TopBar({ onOpenSettings, onOpenExport }: TopBarProps) {
   return (
     <div className="flex h-12 items-center gap-2 border-b bg-card px-2">
       <div className="flex items-center gap-2">
+        {showBackButton && (
+          <Button variant="ghost" size="sm" onClick={onBack} className="mr-1 h-8 w-8 p-0">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        )}
         <div className="text-sm font-semibold tracking-tight">Open Handball Video</div>
         <div className="text-xs text-muted-foreground">Sports Video Analysis Tool</div>
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            // Save JSON
-            downloadTextFile(filename, exportProjectJson(), 'application/json');
-          }}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Save Project
-        </Button>
+        {!window.electron && (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                // Save JSON
+                downloadTextFile(filename, exportProjectJson(), 'application/json');
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Save Project
+            </Button>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            await onLoadProjectFile(file);
-            e.currentTarget.value = '';
-          }}
-        />
-        <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
-          <FolderOpen className="mr-2 h-4 w-4" />
-          Load Project
-        </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                await onLoadProjectFile(file);
+                e.currentTarget.value = '';
+              }}
+            />
+            <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Load Project
+            </Button>
 
-        <Separator orientation="vertical" className="mx-1 h-6" />
+            <Separator orientation="vertical" className="mx-1 h-6" />
+          </>
+        )}
 
         <Button variant="outline" size="sm" onClick={onOpenExport}>
           <Upload className="mr-2 h-4 w-4" />

@@ -17,7 +17,7 @@ export function useGlobalHotkeys() {
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
   const fps = useProjectStore((s) => s.videoMeta?.fps ?? 30);
   const createSegmentFromTrigger = useProjectStore((s) => s.createSegmentFromTrigger);
-  const appendSecondaryToLastSegment = useProjectStore((s) => s.appendSecondaryToLastSegment);
+  const toggleSecondaryOnSelectedSegment = useProjectStore((s) => s.toggleSecondaryOnSelectedSegment);
 
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const isPlaying = useVideoStore((s) => s.isPlaying);
@@ -62,14 +62,14 @@ export function useGlobalHotkeys() {
       const sec = secondaryLabels.find((s) => (s.hotkey ?? '').toUpperCase() === key);
       if (sec) {
         e.preventDefault();
-        appendSecondaryToLastSegment(sec.id);
+        toggleSecondaryOnSelectedSegment(sec.id);
       }
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
-    appendSecondaryToLastSegment,
+    toggleSecondaryOnSelectedSegment,
     createSegmentFromTrigger,
     currentTimeSec,
     fps,
