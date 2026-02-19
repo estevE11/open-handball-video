@@ -25,7 +25,7 @@ export default function App() {
   const videoSourceUrl = useProjectStore((s) => s.session.videoSourceUrl);
   const videoMeta = useProjectStore((s) => s.videoMeta);
   const clearVideoSourceUrl = useProjectStore((s) => s.clearVideoSourceUrl);
-  const projectState = useProjectStore((s) => s);
+  const updatedAtMs = useProjectStore((s) => s.updatedAtMs);
 
   useGlobalHotkeys();
 
@@ -37,19 +37,14 @@ export default function App() {
   // Auto-save effect for Electron
   useDebouncedEffect(() => {
     if (window.electron && videoMeta?.fileName && videoSourceUrl) {
-      // Create a clean project object for saving
-      // partializeForPersist is internal to zustand persist, but we can do similar here
-      // We rely on pickProjectData logic implicitly via what we pass
-      // Actually, we can just grab the state and clean it.
-      
-      // Let's rely on exportProjectJson logic but parse it back to object for IPC
-      const dataStr = projectState.exportProjectJson();
+      const state = useProjectStore.getState();
+      const dataStr = state.exportProjectJson();
       const data = JSON.parse(dataStr);
       
       console.log('Auto-saving project...', videoMeta.fileName);
       window.electron.saveProject(videoMeta.fileName, data).catch(console.error);
     }
-  }, [projectState, videoMeta, videoSourceUrl], 2000);
+  }, [updatedAtMs, videoMeta, videoSourceUrl], 2000);
 
   // If in Electron and no video loaded, show Dashboard
   if (window.electron && !videoSourceUrl) {

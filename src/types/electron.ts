@@ -1,4 +1,4 @@
-import { ProjectData } from "./project";
+import type { ProjectData } from "./project";
 
 export interface ElectronAPI {
   getVideos: () => Promise<VideoFile[]>;

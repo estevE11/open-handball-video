@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProjectStore } from '@/store/projectStore';
-import { VideoFile } from '@/types/electron';
+import type { VideoFile } from '@/types/electron';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';

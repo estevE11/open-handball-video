@@ -4,13 +4,13 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ESNext", "DOM"],
-    "outDir": "dist-electron",
-    "rootDir": "electron",
+    "outDir": "../dist-electron",
+    "rootDir": ".",
     "strict": true,
     "noImplicitAny": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["electron/**/*"]
+  "include": ["**/*"]
 }

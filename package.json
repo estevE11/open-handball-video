@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "author": "Open Handball Video",
   "description": "Video Analysis Tool for Handball",
   "scripts": {
@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "postinstall": "node scripts/copy-ffmpeg-core.mjs",
-    "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && tsc -p electron/tsconfig.json && cross-env NODE_ENV=development electron .\"",
+    "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && rm -rf dist-electron && tsc -p electron/tsconfig.json && cross-env NODE_ENV=development electron .\"",
     "electron:build": "tsc -b && vite build && tsc -p electron/tsconfig.json && electron-builder"
   },
   "dependencies": {

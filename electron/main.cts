@@ -1,10 +1,6 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Constants
 const APP_FOLDER_NAME = 'open-handball-video';
@@ -42,7 +38,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false // Needed for file:// access to videos without complex setups

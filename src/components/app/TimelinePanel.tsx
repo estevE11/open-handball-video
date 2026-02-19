@@ -30,6 +30,8 @@ export function TimelinePanel() {
 
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const segments = useProjectStore((s) => s.segments);
+  const selectedSegmentId = useProjectStore((s) => s.selectedSegmentId);
+  const setSelectedSegmentId = useProjectStore((s) => s.setSelectedSegmentId);
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const durationSec = useVideoStore((s) => s.durationSec);
   const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
@@ -256,6 +258,7 @@ export function TimelinePanel() {
                 const rowIdx = mainLabels.findIndex((l) => l.id === seg.mainLabelId);
                 if (rowIdx < 0) return null;
                 const label = mainLabels[rowIdx];
+                const isSelected = seg.id === selectedSegmentId;
                 const left = seg.startTimeSec * pps;
                 const width = Math.max(2, (seg.endTimeSec - seg.startTimeSec) * pps);
                 const top = rowIdx * ROW_H + 6;
@@ -263,13 +266,20 @@ export function TimelinePanel() {
                 return (
                   <div
                     key={seg.id}
-                    className="absolute z-10 rounded-sm border border-black/10 opacity-90 hover:opacity-100"
+                    className={cn(
+                      "absolute z-10 rounded-sm border border-black/10 transition-shadow",
+                      isSelected ? "opacity-100 ring-2 ring-primary ring-offset-1 ring-offset-background z-20" : "opacity-90 hover:opacity-100"
+                    )}
                     style={{ left, width, top, height: h, backgroundColor: label.color }}
                     title={`${label.name} ${formatTimecode(seg.startTimeSec)} → ${formatTimecode(seg.endTimeSec)}`}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setSelectedSegmentId(seg.id);
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (justDraggedRef.current) return;
+                      setSelectedSegmentId(seg.id);
                       setCurrentTimeSec(seg.startTimeSec);
                     }}
                     role="button"

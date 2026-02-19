@@ -8,6 +8,7 @@ export function getDefaultMainLabels(): MainLabel[] {
     {
       id: createId(),
       name: 'Attack',
+      defaultName: 'Attack',
       color: '#ef4444',
       preRollSec: 2,
       postRollSec: 3,
@@ -16,6 +17,7 @@ export function getDefaultMainLabels(): MainLabel[] {
     {
       id: createId(),
       name: 'Defense',
+      defaultName: 'Defense',
       color: '#3b82f6',
       preRollSec: 2,
       postRollSec: 3,
