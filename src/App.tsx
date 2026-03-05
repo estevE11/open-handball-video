@@ -60,7 +60,7 @@ export default function App() {
         onBack={() => clearVideoSourceUrl()}
       />
 
-      <div className="grid h-[calc(100%-3rem)] grid-rows-[minmax(0,1fr)_minmax(0,320px)] gap-2 p-2">
+      <div className="grid h-[calc(100%-3rem)] grid-rows-[minmax(0,1fr)_auto] gap-2 p-2">
         <div className="grid min-h-0 min-w-0 grid-cols-[420px_minmax(0,1fr)] gap-2">
           <EventLogPanel />
           <VideoPanel />

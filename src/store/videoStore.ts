@@ -5,13 +5,13 @@ type VideoRuntimeState = {
   durationSec: number;
   isPlaying: boolean;
   isMuted: boolean;
-  playbackRate: 0.5 | 1 | 2;
+  playbackRate: 0.5 | 1 | 2 | 2.5 | 3;
 
   setCurrentTimeSec: (t: number) => void;
   setDurationSec: (d: number) => void;
   setIsPlaying: (p: boolean) => void;
   setIsMuted: (m: boolean) => void;
-  setPlaybackRate: (r: 0.5 | 1 | 2) => void;
+  setPlaybackRate: (r: 0.5 | 1 | 2 | 2.5 | 3) => void;
 
   reset: () => void;
 };

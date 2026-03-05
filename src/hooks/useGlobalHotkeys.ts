@@ -21,10 +21,14 @@ export function useGlobalHotkeys() {
 
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const isPlaying = useVideoStore((s) => s.isPlaying);
+  const playbackRate = useVideoStore((s) => s.playbackRate);
   const setIsPlaying = useVideoStore((s) => s.setIsPlaying);
   const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
+  const setPlaybackRate = useVideoStore((s) => s.setPlaybackRate);
 
   useEffect(() => {
+    let savedPlaybackRate: 0.5 | 1 | 2 | 2.5 | 3 = 1;
+
     function onKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -40,15 +44,20 @@ export function useGlobalHotkeys() {
 
       if (key === 'ARROWLEFT') {
         e.preventDefault();
-        const frameSec = 1 / Math.max(1, fps || 30);
-        setCurrentTimeSec(currentTimeSec - frameSec);
+        setCurrentTimeSec(Math.max(0, currentTimeSec - 20));
         return;
       }
 
       if (key === 'ARROWRIGHT') {
         e.preventDefault();
-        const frameSec = 1 / Math.max(1, fps || 30);
-        setCurrentTimeSec(currentTimeSec + frameSec);
+        setCurrentTimeSec(currentTimeSec + 20);
+        return;
+      }
+
+      if (key === 'J') {
+        e.preventDefault();
+        savedPlaybackRate = playbackRate;
+        setPlaybackRate(1);
         return;
       }
 
@@ -66,18 +75,31 @@ export function useGlobalHotkeys() {
       }
     }
 
+    function onKeyUp(e: KeyboardEvent) {
+      const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      if (key === 'J') {
+        setPlaybackRate(savedPlaybackRate);
+      }
+    }
+
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [
     toggleSecondaryOnSelectedSegment,
     createSegmentFromTrigger,
     currentTimeSec,
     fps,
     isPlaying,
+    playbackRate,
     mainLabels,
     secondaryLabels,
     setCurrentTimeSec,
     setIsPlaying,
+    setPlaybackRate,
   ]);
 }
 
