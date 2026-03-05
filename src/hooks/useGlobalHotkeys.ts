@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -26,9 +26,17 @@ export function useGlobalHotkeys() {
   const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
   const setPlaybackRate = useVideoStore((s) => s.setPlaybackRate);
 
-  useEffect(() => {
-    let savedPlaybackRate: 0.5 | 1 | 2 | 2.5 | 3 = 1;
+  const savedPlaybackRateRef = useRef<0.5 | 1 | 2 | 2.5 | 3>(playbackRate);
+  const jHeldRef = useRef(false);
 
+  // Update ref whenever playbackRate changes, but only if J is not held
+  useEffect(() => {
+    if (!jHeldRef.current) {
+      savedPlaybackRateRef.current = playbackRate;
+    }
+  }, [playbackRate]);
+
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -54,9 +62,9 @@ export function useGlobalHotkeys() {
         return;
       }
 
-      if (key === 'J') {
+      if (key === 'J' && !jHeldRef.current) {
         e.preventDefault();
-        savedPlaybackRate = playbackRate;
+        jHeldRef.current = true;
         setPlaybackRate(1);
         return;
       }
@@ -77,8 +85,9 @@ export function useGlobalHotkeys() {
 
     function onKeyUp(e: KeyboardEvent) {
       const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-      if (key === 'J') {
-        setPlaybackRate(savedPlaybackRate);
+      if (key === 'J' && jHeldRef.current) {
+        jHeldRef.current = false;
+        setPlaybackRate(savedPlaybackRateRef.current);
       }
     }
 
@@ -94,7 +103,6 @@ export function useGlobalHotkeys() {
     currentTimeSec,
     fps,
     isPlaying,
-    playbackRate,
     mainLabels,
     secondaryLabels,
     setCurrentTimeSec,
