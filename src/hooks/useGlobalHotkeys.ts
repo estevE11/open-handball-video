@@ -13,28 +13,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 export function useGlobalHotkeys() {
-  const mainLabels = useProjectStore((s) => s.mainLabels);
-  const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
-  const fps = useProjectStore((s) => s.videoMeta?.fps ?? 30);
-  const createSegmentFromTrigger = useProjectStore((s) => s.createSegmentFromTrigger);
-  const toggleSecondaryOnSelectedSegment = useProjectStore((s) => s.toggleSecondaryOnSelectedSegment);
-
-  const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
-  const isPlaying = useVideoStore((s) => s.isPlaying);
-  const playbackRate = useVideoStore((s) => s.playbackRate);
-  const setIsPlaying = useVideoStore((s) => s.setIsPlaying);
-  const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
-  const setPlaybackRate = useVideoStore((s) => s.setPlaybackRate);
-
-  const savedPlaybackRateRef = useRef<0.5 | 1 | 2 | 2.5 | 3>(playbackRate);
+  const savedPlaybackRateRef = useRef<0.5 | 1 | 2 | 2.5 | 3>(1);
   const jHeldRef = useRef(false);
-
-  // Update ref whenever playbackRate changes, but only if J is not held
-  useEffect(() => {
-    if (!jHeldRef.current) {
-      savedPlaybackRateRef.current = playbackRate;
-    }
-  }, [playbackRate]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -43,43 +23,46 @@ export function useGlobalHotkeys() {
       if (isTypingTarget(e.target)) return;
 
       const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      const videoState = useVideoStore.getState();
+      const projectState = useProjectStore.getState();
 
       if (key === ' ') {
         e.preventDefault();
-        setIsPlaying(!isPlaying);
+        videoState.setIsPlaying(!videoState.isPlaying);
         return;
       }
 
-      if (key === 'ARROWLEFT') {
+      if (key === 'ArrowLeft') {
         e.preventDefault();
-        setCurrentTimeSec(Math.max(0, currentTimeSec - 20));
+        videoState.setCurrentTimeSec(videoState.currentTimeSec - 20);
         return;
       }
 
-      if (key === 'ARROWRIGHT') {
+      if (key === 'ArrowRight') {
         e.preventDefault();
-        setCurrentTimeSec(currentTimeSec + 20);
+        videoState.setCurrentTimeSec(videoState.currentTimeSec + 20);
         return;
       }
 
       if (key === 'J' && !jHeldRef.current) {
         e.preventDefault();
+        savedPlaybackRateRef.current = videoState.playbackRate;
         jHeldRef.current = true;
-        setPlaybackRate(1);
+        videoState.setPlaybackRate(1);
         return;
       }
 
-      const main = mainLabels.find((l) => l.hotkey.toUpperCase() === key);
+      const main = projectState.mainLabels.find((l) => l.hotkey.toUpperCase() === key);
       if (main) {
         e.preventDefault();
-        createSegmentFromTrigger(main.id, currentTimeSec);
+        projectState.createSegmentFromTrigger(main.id, videoState.currentTimeSec);
         return;
       }
 
-      const sec = secondaryLabels.find((s) => (s.hotkey ?? '').toUpperCase() === key);
+      const sec = projectState.secondaryLabels.find((s) => (s.hotkey ?? '').toUpperCase() === key);
       if (sec) {
         e.preventDefault();
-        toggleSecondaryOnSelectedSegment(sec.id);
+        projectState.toggleSecondaryOnSelectedSegment(sec.id);
       }
     }
 
@@ -87,7 +70,7 @@ export function useGlobalHotkeys() {
       const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
       if (key === 'J' && jHeldRef.current) {
         jHeldRef.current = false;
-        setPlaybackRate(savedPlaybackRateRef.current);
+        useVideoStore.getState().setPlaybackRate(savedPlaybackRateRef.current);
       }
     }
 
@@ -97,18 +80,5 @@ export function useGlobalHotkeys() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [
-    toggleSecondaryOnSelectedSegment,
-    createSegmentFromTrigger,
-    currentTimeSec,
-    fps,
-    isPlaying,
-    mainLabels,
-    secondaryLabels,
-    setCurrentTimeSec,
-    setIsPlaying,
-    setPlaybackRate,
-  ]);
+  }, []);
 }
-
-
