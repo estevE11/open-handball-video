@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { monotonicProgress, nativeProgressParser, type ExportProgress } from './exportProgress.js';
 import { spawn } from 'node:child_process';
 import { readTemporaryVideoExport } from './temporaryVideoExport.js';
@@ -24,6 +25,7 @@ async function renderNativeSingleExport(
   { ffmpegPath, ffprobePath, fontPath }: NativeExportConfig,
   onProgress: ExportProgress,
 ) {
+  if (inputPath.startsWith('file:')) inputPath = fileURLToPath(inputPath);
   function run(binary: string, args: string[], onTime?: (seconds: number) => void) {
     return new Promise<string>((resolve, reject) => {
       const progress = nativeProgressParser(onTime ?? (() => {}));

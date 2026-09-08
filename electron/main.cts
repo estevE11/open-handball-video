@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
@@ -150,7 +150,7 @@ ipcMain.handle('save-project', async (_event, videoFileName, projectData) => {
 
 ipcMain.handle('read-file', async (_event, filePath: string) => {
   try {
-    const buffer = await fs.promises.readFile(filePath);
+    const buffer = await fs.promises.readFile(filePath.startsWith('file:') ? fileURLToPath(filePath) : filePath);
     return buffer;
   } catch (error) {
     console.error(`Error reading file at ${filePath}:`, error);

@@ -42,9 +42,9 @@ it('uses native export bytes directly without leaving an intermediate beside the
   const electron = { onExportProgress: vi.fn(() => () => {}), runNativeExport: vi.fn(async () => new Uint8Array([4, 5, 6])), readFile: vi.fn() };
   Object.assign(window, { electron });
   try {
-    const blob = await exportFilteredSegmentsToMp4('file:///videos/match.mp4', segments);
+    const blob = await exportFilteredSegmentsToMp4('file:///videos/match%20%23100%25.mp4', segments);
     expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([4, 5, 6]);
-    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: '/videos/match.mp4', segments, addGap: false, mainLabels: [] });
+    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: 'file:///videos/match%20%23100%25.mp4', segments, addGap: false, mainLabels: [] });
     expect(electron.readFile).not.toHaveBeenCalled();
   } finally { delete window.electron; }
 });

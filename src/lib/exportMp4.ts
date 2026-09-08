@@ -41,7 +41,7 @@ export async function exportFilteredSegmentsToMp4(
 
   // ELECTRON NATIVE EXPORT PATH
   if (window.electron && typeof videoInput === 'string' && videoInput.startsWith('file://')) {
-    const inputPath = decodeURIComponent(videoInput.replace(/^file:\/\//, ''));
+    const inputPath = videoInput;
 
     try {
       const data = await withNativeExportProgress((exportId) => window.electron!.runNativeExport({
@@ -114,8 +114,8 @@ export async function exportFilteredSegmentsToMp4(
     try {
       let videoData: Uint8Array;
       if (typeof videoInput === 'string' && videoInput.startsWith('file://') && window.electron) {
-        // Strip protocol and handle URL encoding (spaces, etc)
-        const filePath = decodeURIComponent(videoInput.replace(/^file:\/\//, ''));
+        // Keep the file URL intact until the native filesystem boundary.
+        const filePath = videoInput;
         console.info('[export] reading local file via electron', filePath);
         videoData = await window.electron.readFile(filePath);
       } else {
