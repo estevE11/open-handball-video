@@ -159,6 +159,7 @@ it('orders a split match, seeks and plays across boundaries, and tags on match t
   fireEvent.keyDown(window, { key: 'a' });
   expect(useProjectStore.getState().segments[0]).toMatchObject({ startTimeSec: 7, endTimeSec: 12 });
   fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+  Object.defineProperty(player, 'ended', { configurable: true, value: true });
   fireEvent.ended(player);
   expect(useVideoStore.getState().currentTimeSec).toBe(10);
   expect(useVideoStore.getState().isPlaying).toBe(true);
@@ -356,4 +357,31 @@ it.each(['malformed', 'unreadable'])('keeps the Electron library recoverable aft
     fireEvent.click(screen.getByText('bad.mp4'));
     await screen.findByRole('button', { name: 'Back to projects' });
   } finally { cleanup(); delete window.electron; }
+});
+
+it('selects tagged ranges for review and skips to the next selected tag during playback', async () => {
+  vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  render(<App />);
+  await screen.findByText('No saved projects yet.');
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['video'], 'review.mp4', { type: 'video/mp4' })] } });
+  await screen.findByRole('button', { name: 'Back to projects' });
+  act(() => {
+    const state = useProjectStore.getState();
+    state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
+    state.createSegmentFromTrigger(state.mainLabels[0].id, 30);
+  });
+  const video = document.querySelector('video')!;
+  Object.defineProperty(video, 'readyState', { configurable: true, value: 4 });
+  Object.defineProperty(video, 'duration', { configurable: true, value: 60 });
+  fireEvent.loadedMetadata(video);
+  fireEvent.click(screen.getByRole('button', { name: 'Select tags' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review 2 tags' }));
+  expect(video.currentTime).toBe(8);
+  video.currentTime = 13; fireEvent.timeUpdate(video);
+  expect(video.currentTime).toBe(28);
+  fireEvent.keyDown(window, { key: '[' }); expect(video.currentTime).toBe(8);
+  fireEvent.keyDown(window, { key: ']' }); expect(video.currentTime).toBe(28);
+  fireEvent.click(screen.getByRole('button', { name: 'Stop review' }));
+  expect(screen.getByRole('button', { name: 'Review 2 tags' })).toBeTruthy();
 });

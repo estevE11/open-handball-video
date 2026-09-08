@@ -1,3 +1,4 @@
+import { advanceReviewAt, useReviewStore } from '@/store/reviewStore';
 import { Pause, Play, SkipBack, SkipForward, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -16,6 +17,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
 
 export function VideoPanel() {
+  const reviewing = useReviewStore((s) => s.active);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastInternalTimeRef = useRef(Number.NaN);
@@ -98,6 +100,18 @@ export function VideoPanel() {
     }
   }, [isPlaying, setIsPlaying, activeUrl]);
 
+  useEffect(() => {
+    if (!reviewing || !isPlaying) return;
+    let frame = 0;
+    const tick = () => {
+      const video = videoRef.current;
+      if (video && !video.paused && video.readyState > 0) advanceReviewAt(video.currentTime + clipOffset);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [reviewing, isPlaying, clipOffset]);
+
   const right = useMemo(() => {
     return (
       <div className="flex items-center gap-2">
@@ -132,6 +146,7 @@ export function VideoPanel() {
                 const t = e.currentTarget.currentTime + clipOffset;
                 lastInternalTimeRef.current = t;
                 setCurrentTimeSec(t);
+                if (useVideoStore.getState().isPlaying) advanceReviewAt(t);
               }}
               onLoadedMetadata={(e) => {
                 const el = e.currentTarget;
@@ -148,8 +163,10 @@ export function VideoPanel() {
                 if (useVideoStore.getState().isPlaying) void el.play().catch(() => { if (videoRef.current === el) setIsPlaying(false); });
               }}
               onPlay={() => setIsPlaying(true)}
-              onPause={(e) => { if (e.currentTarget === videoRef.current && !(e.currentTarget.ended && hasNextClip)) setIsPlaying(false); }}
-              onEnded={() => {
+              onPause={(e) => { if (e.currentTarget === videoRef.current && !(e.currentTarget.ended && (hasNextClip || useReviewStore.getState().active))) setIsPlaying(false); }}
+              onEnded={(event) => {
+                if (event.currentTarget !== videoRef.current || !event.currentTarget.ended) return;
+                if (advanceReviewAt(activeClip?.end ?? durationSec)) return;
                 if (hasNextClip && activeClip) setCurrentTimeSec(activeClip.end);
                 else setIsPlaying(false);
               }}

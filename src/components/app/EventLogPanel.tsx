@@ -1,3 +1,5 @@
+import { ReviewControls } from './ReviewControls';
+import { useReviewStore } from '@/store/reviewStore';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -13,6 +15,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
 
 export function EventLogPanel() {
+  const reviewIds = useReviewStore((s) => s.selectedIds);
   const segments = useProjectStore((s) => s.segments);
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
@@ -69,6 +72,7 @@ export function EventLogPanel() {
     >
       <ScrollArea className="h-full min-w-0">
         <div className="flex flex-col gap-2 p-2">
+          <ReviewControls />
           {secondaryLabels.length ? (
             <div className="flex flex-col gap-2 rounded-md border bg-muted/10 p-2">
               <div className="flex items-center justify-between">
@@ -139,6 +143,9 @@ export function EventLogPanel() {
                   setCurrentTimeSec(seg.startTimeSec);
                 }}
               >
+                <input type="checkbox" className="mt-1" aria-label={`Include ${getSegmentTitles(seg, label).primaryText} in review`}
+                  checked={reviewIds.includes(seg.id)} onClick={(event) => event.stopPropagation()}
+                  onChange={() => useReviewStore.getState().toggle(seg.id)} />
                 <div
                   className="mt-1 h-3 w-3 shrink-0 rounded-sm"
                   style={{ backgroundColor: label?.color ?? '#999' }}

@@ -1,3 +1,4 @@
+import { useReviewStore } from '@/store/reviewStore';
 import { useEffect } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -30,6 +31,9 @@ export function useGlobalHotkeys() {
           if (key === 'y' || e.shiftKey) project.redo(); else project.undo();
         }
         return;
+      }
+      if ((e.key === '[' || e.key === ']') && useReviewStore.getState().active) {
+        e.preventDefault(); useReviewStore.getState().step(e.key === '[' ? -1 : 1); return;
       }
       if (e.key === ' ') {
         e.preventDefault(); video.setIsPlaying(!video.isPlaying); return;
