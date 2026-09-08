@@ -1,4 +1,11 @@
 import { useEffect, useState } from 'react';
+import { ClipOrderDialog } from '@/components/app/ClipOrderDialog';
+import { createEmptyProject } from '@/lib/projectDefaults';
+import { createId } from '@/lib/ids';
+import { readVideoDuration, withProjectClips } from '@/lib/clipTimeline';
+import { openElectronClipProject } from '@/lib/electronProjectSession';
+import type { ProjectData, VideoClip } from '@/types/project';
+import { useVideoStore } from '@/store/videoStore';
 import { useProjectStore } from '@/store/projectStore';
 import type { VideoFile } from '@/types/electron';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +14,10 @@ import { Button } from '@/components/ui/button';
 import { FileVideo, RefreshCw } from 'lucide-react';
 
 export function Dashboard() {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [pending, setPending] = useState<VideoFile[]>([]);
+  const [projects, setProjects] = useState<ProjectData[]>([]);
+  const [error, setError] = useState('');
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [loading, setLoading] = useState(false);
   const setElectronVideo = useProjectStore((s) => s.setElectronVideo);
@@ -16,9 +27,13 @@ export function Dashboard() {
     if (!window.electron) return;
     setLoading(true);
     try {
-      const list = await window.electron.getVideos();
+      const [list, saved] = await Promise.all([window.electron.getVideos(), window.electron.getClipProjects()]);
+      setProjects(saved);
+      setSelected((previous) => previous.filter((key) => list.some((video) => video.path === key)));
+      setError('');
       // Sort by modified date descending
       setVideos(list.sort((a, b) => b.modifiedAt - a.modifiedAt));
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not read projects.');
     } finally {
       setLoading(false);
     }
@@ -34,6 +49,9 @@ export function Dashboard() {
     // Load saved project state if it exists
     const savedData = await window.electron.loadProject(video.name);
     
+    useProjectStore.getState().resetProject();
+    useVideoStore.getState().reset();
+
     // Set video in store (this sets videoSourceUrl to file://...)
     setElectronVideo(video.url, {
       fileName: video.name,
@@ -60,7 +78,7 @@ export function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Open Handball Video</h1>
           <p className="text-muted-foreground mt-2">
-            Select a video from your documents folder to start analyzing.
+            Open a video, or select several clips below to create a split match.
           </p>
         </div>
         <Button variant="outline" size="icon" onClick={fetchVideos} disabled={loading}>
@@ -68,6 +86,11 @@ export function Dashboard() {
         </Button>
       </div>
 
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <Button disabled={selected.length < 2 || loading} onClick={() => { setError(''); setPending(selected.map((key) => videos.find((video) => video.path === key)!)); }}>Arrange selected clips ({selected.length})</Button>
+      {projects.length > 0 && <div className="flex flex-wrap gap-2">{projects.map((project) => <Button key={project.projectId} variant="secondary" onClick={() => {
+        try { openElectronClipProject(project, videos); } catch (err) { setError(err instanceof Error ? err.message : 'Could not open project.'); }
+      }}>Open match: {project.videoMeta?.fileName} ({project.clips?.length} clips)</Button>)}</div>}
       <ScrollArea className="flex-1 border rounded-md p-4 bg-card/50">
         {videos.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
@@ -81,7 +104,7 @@ export function Dashboard() {
             <Card 
               key={video.path} 
               className="cursor-pointer hover:bg-accent/50 transition-colors"
-              onClick={() => handleSelectVideo(video)}
+              onClick={() => void handleSelectVideo(video).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not open project.'))}
             >
               <CardHeader className="flex flex-row items-center gap-4 pb-2">
                 <div className="bg-primary/10 p-2 rounded-full">
@@ -97,6 +120,11 @@ export function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
+                <label className="mb-2 flex items-center gap-2 text-sm" onClick={(event) => event.stopPropagation()}>
+                  <input type="checkbox" checked={selected.includes(video.path)} onChange={(event) => {
+                    setSelected((prev) => event.target.checked ? [...prev, video.path] : prev.filter((item) => item !== video.path));
+                  }} /> Include in split match
+                </label>
                 <div className="text-xs text-muted-foreground">
                   Last modified: {new Date(video.modifiedAt).toLocaleDateString()}
                 </div>
@@ -105,6 +133,23 @@ export function Dashboard() {
           ))}
         </div>
       </ScrollArea>
+      {pending.length > 0 && <ClipOrderDialog items={pending.map((video) => ({ id: video.path, name: video.name }))}
+        onChange={(ids) => setPending(ids.map((id) => pending.find((video) => video.path === id)!))}
+        busy={loading} error={error} onCancel={() => setPending([])} onStart={() => {
+          void (async () => {
+            setLoading(true); setError('');
+            try {
+              const clips: VideoClip[] = [];
+              for (const video of pending) clips.push({ id: createId(), fileName: video.name, fileSize: video.size,
+                fileType: 'video/mp4', lastModified: video.modifiedAt, durationSec: await readVideoDuration(video.url) });
+              const data = withProjectClips(createEmptyProject(), clips);
+              data.electronProjectKey = data.projectId;
+              if (!(await window.electron!.saveProject(data.electronProjectKey, data))) throw new Error('Could not save the split match.');
+              openElectronClipProject(data, videos);
+            } catch (err) { setError(err instanceof Error ? err.message : 'Could not prepare clips.'); }
+            finally { setLoading(false); }
+          })();
+        }} />}
     </div>
   );
 }

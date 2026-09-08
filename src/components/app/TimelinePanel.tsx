@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Panel } from '@/components/app/Panel';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getSegmentTitles } from '../../../electron/segmentTitles';
+import { clipOffsets } from '@/lib/clipTimeline';
 import { formatTimecode } from '@/lib/time';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -28,6 +30,7 @@ export function TimelinePanel() {
   const justDraggedRef = useRef(false);
   const dragMovedRef = useRef(false);
 
+  const clips = useProjectStore((s) => s.clips);
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const segments = useProjectStore((s) => s.segments);
   const selectedSegmentId = useProjectStore((s) => s.selectedSegmentId);
@@ -195,7 +198,7 @@ export function TimelinePanel() {
         </div>
       }
     >
-      <div ref={scrollRef} className="h-full min-w-0 overflow-auto">
+      <div ref={scrollRef} className="min-w-0 overflow-auto" style={{ maxHeight: 'min(278px, calc(40vh - 42px))' }}>
         <div style={{ width: LABEL_COL_W + timelineW, height: HEADER_H + trackH }} className="relative">
           {/* Header */}
           <div className="sticky top-0 z-20 flex h-[28px] bg-card">
@@ -246,6 +249,10 @@ export function TimelinePanel() {
                 />
               ))}
 
+              {clips && clipOffsets(clips).slice(1).map(({ clip, start }) => <div key={clip.id}
+                className="pointer-events-none absolute top-0 h-full border-l border-dashed border-muted-foreground"
+                style={{ left: start * pps }} title={clip.fileName} aria-label={`Clip boundary: ${clip.fileName}`} />)}
+
               {/* Cursor */}
               <div
                 className="absolute top-0 z-20 h-full w-px bg-primary"
@@ -271,7 +278,7 @@ export function TimelinePanel() {
                       isSelected ? "opacity-100 ring-2 ring-primary ring-offset-1 ring-offset-background z-20" : "opacity-90 hover:opacity-100"
                     )}
                     style={{ left, width, top, height: h, backgroundColor: label.color }}
-                    title={`${label.name} ${formatTimecode(seg.startTimeSec)} → ${formatTimecode(seg.endTimeSec)}`}
+                    title={`${getSegmentTitles(seg, label).primaryText} · ${label.name} ${formatTimecode(seg.startTimeSec)} → ${formatTimecode(seg.endTimeSec)}`}
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       setSelectedSegmentId(seg.id);
@@ -339,6 +346,9 @@ export function TimelinePanel() {
                       aria-label="Move segment"
                     />
 
+                    <div className="pointer-events-none absolute inset-y-0 left-3 right-3 truncate text-[10px] leading-[22px] text-white">
+                      {getSegmentTitles(seg, label).primaryText}
+                    </div>
                     {/* Subtle grips */}
                     <div className="pointer-events-none absolute left-0 top-0 h-full w-2 opacity-30">
                       <div className="mx-auto mt-[6px] h-[14px] w-[2px] rounded bg-black/60" />

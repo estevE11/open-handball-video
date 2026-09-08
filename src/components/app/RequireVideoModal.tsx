@@ -1,12 +1,17 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { attachBrowserClips } from '@/lib/browserProjectSession';
+import { storageError } from '@/lib/browserStorage';
 import { probeVideoFps } from '@/lib/videoProbe';
 import { useProjectStore } from '@/store/projectStore';
 
-export function RequireVideoModal() {
+export function RequireVideoModal({ onBack }: { onBack: () => void }) {
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const hydrated = useProjectStore((s) => s.session.hydrated);
+  const clips = useProjectStore((s) => s.clips);
   const videoMeta = useProjectStore((s) => s.videoMeta);
   const hasVideoFile = useProjectStore((s) => !!s.session.videoFile || (!!window.electron && !!s.session.videoSourceUrl));
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
@@ -14,36 +19,47 @@ export function RequireVideoModal() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const open = hydrated && !!videoMeta && !hasVideoFile;
+  const open = hydrated && !hasVideoFile;
 
   const subtitle = useMemo(() => {
+    if (clips) return `Choose all ${clips.length} original clips. Their saved order and tags will be restored.`;
     if (!videoMeta) return 'Upload a video file to start.';
-    return `This project was restored from auto-save. Please re-upload the original video file: ${videoMeta.fileName}`;
-  }, [videoMeta]);
+    return `Select the original video for this saved project: ${videoMeta.fileName}`;
+  }, [videoMeta, clips]);
 
   return (
     <Dialog open={open}>
       <DialogContent className="sm:max-w-[560px]" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>Re-upload video</DialogTitle>
+          <DialogTitle>Attach project video</DialogTitle>
           <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>
 
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
-          Browsers can’t automatically restore access to local files after a reload. Your labels/segments are saved, but you must select the video
-          again.
+          This project has no video saved in this browser. Select the original file or clips; it will be stored with the project for future visits.
         </div>
 
+        {clips && <ol className="max-h-40 list-inside list-decimal overflow-auto text-sm text-muted-foreground">
+          {clips.map((clip) => <li key={clip.id}>{clip.fileName}</li>)}
+        </ol>}
         <input
           ref={fileInputRef}
           type="file"
           accept="video/*"
+          multiple={!!clips}
           className="hidden"
           onChange={async (e) => {
-            const file = e.target.files?.[0];
+            const files = Array.from(e.target.files ?? []);
+            const file = files[0];
             if (!file) return;
-            const url = URL.createObjectURL(file);
-            setVideoFile(file, url);
+            e.currentTarget.value = '';
+            setBusy(true); setError('');
+            try {
+              if (window.electron) setVideoFile(file, URL.createObjectURL(file));
+              else await attachBrowserClips(files);
+            } catch (err) { setError(storageError(err)); setBusy(false); return; }
+            setBusy(false);
+            if (clips) return;
             try {
               const fps = await probeVideoFps(file);
               if (fps && useProjectStore.getState().session.videoFile === file) {
@@ -52,13 +68,14 @@ export function RequireVideoModal() {
             } catch (err) {
               console.warn('[video] fps probe failed', err);
             }
-            e.currentTarget.value = '';
           }}
         />
 
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            Choose video…
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <Button disabled={busy} variant="ghost" onClick={onBack}>Back to projects</Button>
+          <Button disabled={busy} variant="secondary" onClick={() => fileInputRef.current?.click()}>
+            {clips ? 'Choose original clips…' : 'Choose video…'}
           </Button>
         </div>
       </DialogContent>

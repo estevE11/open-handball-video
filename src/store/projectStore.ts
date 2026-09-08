@@ -10,8 +10,9 @@ const STORAGE_KEY = 'ohv.project.v1';
 type SessionState = {
   /** Blob URL of the currently loaded local video. Never persisted. */
   videoSourceUrl: string | null;
-  /** The currently loaded local file (cannot be persisted). */
+  /** Active video file. Browser library persists it separately in IndexedDB. */
   videoFile: File | null;
+  clipSources: { url: string; file: File | null }[];
   /** True after Zustand rehydrates from localStorage. */
   hydrated: boolean;
 };
@@ -89,6 +90,8 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
     createdAtMs,
     updatedAtMs,
     videoMeta,
+    clips,
+    electronProjectKey,
     mainLabels,
     secondaryLabels,
     segments,
@@ -102,6 +105,8 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
     createdAtMs,
     updatedAtMs,
     videoMeta,
+    clips,
+    electronProjectKey,
     mainLabels,
     secondaryLabels,
     segments,
@@ -111,8 +116,8 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
 }
 
 function pickProjectData(state: ProjectState): ProjectData {
-  const { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, mainLabels, secondaryLabels, segments, settings } = state;
-  return { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, mainLabels, secondaryLabels, segments, settings };
+  const { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, mainLabels, secondaryLabels, segments, settings } = state;
+  return { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, mainLabels, secondaryLabels, segments, settings };
 }
 
 function migrateToV1(persistedState: unknown): Partial<ProjectState> {
@@ -133,7 +138,7 @@ export const useProjectStore = create<ProjectState>()(
         ...base,
         lastCreatedSegmentId: null,
         selectedSegmentId: null,
-        session: { videoSourceUrl: null, videoFile: null, hydrated: false },
+        session: { videoSourceUrl: null, videoFile: null, clipSources: [], hydrated: false },
 
         _setHydrated: (hydrated) => {
           set((s) => ({ session: { ...s.session, hydrated } }));
@@ -148,9 +153,11 @@ export const useProjectStore = create<ProjectState>()(
         },
 
         clearVideoSourceUrl: () => {
-          const old = get().session.videoSourceUrl;
-          if (old) URL.revokeObjectURL(old);
-          set((s) => ({ session: { ...s.session, videoSourceUrl: null, videoFile: null } }));
+          const session = get().session;
+          for (const url of new Set([session.videoSourceUrl, ...session.clipSources.map((source) => source.url)])) {
+            if (url) URL.revokeObjectURL(url);
+          }
+          set((s) => ({ session: { ...s.session, videoSourceUrl: null, videoFile: null, clipSources: [] } }));
         },
 
         setVideoFile: (file, videoSourceUrl, durationSec) => {
@@ -288,7 +295,7 @@ export const useProjectStore = create<ProjectState>()(
 
         renameSegment: (segmentId, name) => {
           set((s) => ({
-            segments: s.segments.map((seg) => (seg.id === segmentId ? { ...seg, name } : seg)),
+            segments: s.segments.map((seg) => (seg.id === segmentId ? { ...seg, name: name.trim() || undefined } : seg)),
             updatedAtMs: nowMs(),
           }));
         },
@@ -324,20 +331,23 @@ export const useProjectStore = create<ProjectState>()(
 
           set((s) => ({
             ...s,
+            clips: undefined,
+            electronProjectKey: undefined,
             ...data,
             updatedAtMs: nowMs(),
-            // Don't touch session.videoSourceUrl — browser can't restore it.
+            selectedSegmentId: null,
+            lastCreatedSegmentId: null,
+            // The caller restores the associated video session separately.
             session: s.session,
           }));
         },
 
         resetProject: () => {
-          const oldUrl = get().session.videoSourceUrl;
-          if (oldUrl) URL.revokeObjectURL(oldUrl);
+          get().clearVideoSourceUrl();
 
           // Clear persisted storage.
           try {
-            localStorage.removeItem(STORAGE_KEY);
+            if (window.electron) localStorage.removeItem(STORAGE_KEY);
           } catch {
             // ignore
           }
@@ -345,8 +355,11 @@ export const useProjectStore = create<ProjectState>()(
           const next = createEmptyProject();
           set(() => ({
             ...next,
+            clips: undefined,
+            electronProjectKey: undefined,
             lastCreatedSegmentId: null,
-            session: { videoSourceUrl: null, videoFile: null, hydrated: true },
+            selectedSegmentId: null,
+            session: { videoSourceUrl: null, videoFile: null, clipSources: [], hydrated: true },
           }));
         },
 
@@ -361,7 +374,9 @@ export const useProjectStore = create<ProjectState>()(
     {
       name: STORAGE_KEY,
       version: PROJECT_SCHEMA_VERSION,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => window.electron ? localStorage : {
+        getItem: () => null, setItem: () => {}, removeItem: () => {},
+      }),
       partialize: partializeForPersist,
       migrate: (persistedState) => migrateToV1(persistedState),
       onRehydrateStorage: () => (state, error) => {

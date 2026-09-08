@@ -1,84 +1,39 @@
 import { useEffect } from 'react';
-
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
+import { stepVideoFrame } from '@/lib/playbackControls';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
   const tag = el.tagName?.toLowerCase();
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
-  if (el.isContentEditable) return true;
-  return false;
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || !!el.isContentEditable
+    || !!el.closest?.('[role="combobox"], [role="slider"], [role="dialog"]');
 }
 
 export function useGlobalHotkeys() {
-  const mainLabels = useProjectStore((s) => s.mainLabels);
-  const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
-  const fps = useProjectStore((s) => s.videoMeta?.fps ?? 30);
-  const createSegmentFromTrigger = useProjectStore((s) => s.createSegmentFromTrigger);
-  const toggleSecondaryOnSelectedSegment = useProjectStore((s) => s.toggleSecondaryOnSelectedSegment);
-
-  const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
-  const isPlaying = useVideoStore((s) => s.isPlaying);
-  const setIsPlaying = useVideoStore((s) => s.setIsPlaying);
-  const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
-
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.defaultPrevented) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
-
-      const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-
-      if (key === ' ') {
-        e.preventDefault();
-        setIsPlaying(!isPlaying);
-        return;
+      const project = useProjectStore.getState();
+      const video = useVideoStore.getState();
+      if (e.defaultPrevented || !project.session.videoSourceUrl) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.key === ' ') {
+        e.preventDefault(); video.setIsPlaying(!video.isPlaying); return;
       }
-
-      if (key === 'ARROWLEFT') {
-        e.preventDefault();
-        const frameSec = 1 / Math.max(1, fps || 30);
-        setCurrentTimeSec(currentTimeSec - frameSec);
-        return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault(); video.setCurrentTimeSec(video.currentTimeSec + (e.key === 'ArrowLeft' ? -5 : 5)); return;
       }
-
-      if (key === 'ARROWRIGHT') {
-        e.preventDefault();
-        const frameSec = 1 / Math.max(1, fps || 30);
-        setCurrentTimeSec(currentTimeSec + frameSec);
-        return;
+      if (e.key === ',' || e.key === '.') {
+        e.preventDefault(); stepVideoFrame(e.key === ',' ? -1 : 1); return;
       }
-
-      const main = mainLabels.find((l) => l.hotkey.toUpperCase() === key);
-      if (main) {
-        e.preventDefault();
-        createSegmentFromTrigger(main.id, currentTimeSec);
-        return;
-      }
-
-      const sec = secondaryLabels.find((s) => (s.hotkey ?? '').toUpperCase() === key);
-      if (sec) {
-        e.preventDefault();
-        toggleSecondaryOnSelectedSegment(sec.id);
-      }
+      const key = e.key.toUpperCase();
+      const main = project.mainLabels.find((label) => label.hotkey.toUpperCase() === key);
+      if (main) { e.preventDefault(); project.createSegmentFromTrigger(main.id, video.currentTimeSec); return; }
+      const secondary = project.secondaryLabels.find((label) => label.hotkey?.toUpperCase() === key);
+      if (secondary) { e.preventDefault(); project.toggleSecondaryOnSelectedSegment(secondary.id); }
     }
-
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    toggleSecondaryOnSelectedSegment,
-    createSegmentFromTrigger,
-    currentTimeSec,
-    fps,
-    isPlaying,
-    mainLabels,
-    secondaryLabels,
-    setCurrentTimeSec,
-    setIsPlaying,
-  ]);
+  }, []);
 }
-
-

@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import { stepVideoFrame } from '@/lib/playbackControls';
+import { locateClip } from '@/lib/clipTimeline';
 import { formatTimecode } from '@/lib/time';
+import { attachBrowserVideo } from '@/lib/browserProjectSession';
+import { storageError } from '@/lib/browserStorage';
 import { probeVideoFps } from '@/lib/videoProbe';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -14,14 +18,16 @@ import { useVideoStore } from '@/store/videoStore';
 export function VideoPanel() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const lastInternalTimeRef = useRef(0);
+  const lastInternalTimeRef = useRef(Number.NaN);
 
+  const clips = useProjectStore((s) => s.clips);
+  const clipSources = useProjectStore((s) => s.session.clipSources);
   const videoSourceUrl = useProjectStore((s) => s.session.videoSourceUrl);
   const setVideoFile = useProjectStore((s) => s.setVideoFile);
   const setVideoDurationSec = useProjectStore((s) => s.setVideoDurationSec);
   const setVideoFps = useProjectStore((s) => s.setVideoFps);
   const videoMeta = useProjectStore((s) => s.videoMeta);
-  const detectedFps = videoMeta?.fps;
+
 
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
   const durationSec = useVideoStore((s) => s.durationSec);
@@ -33,6 +39,13 @@ export function VideoPanel() {
   const setIsPlaying = useVideoStore((s) => s.setIsPlaying);
   const setIsMuted = useVideoStore((s) => s.setIsMuted);
   const setPlaybackRate = useVideoStore((s) => s.setPlaybackRate);
+
+  const activeClip = clips ? locateClip(clips, currentTimeSec) : null;
+  const clipIndex = activeClip?.index ?? 0;
+  const clipOffset = activeClip?.start ?? 0;
+  const activeUrl = clips ? clipSources[clipIndex]?.url : videoSourceUrl;
+  const hasNextClip = !!clips && clipIndex < clips.length - 1;
+  const [playbackError, setPlaybackError] = useState('');
 
   const [scrubValue, setScrubValue] = useState<number[]>([0]);
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -51,36 +64,39 @@ export function VideoPanel() {
 
     // If the change is coming from the video itself (feedback loop), skip sync.
     const feedbackDelta = Math.abs(currentTimeSec - lastInternalTimeRef.current);
+    lastInternalTimeRef.current = Number.NaN;
     if (feedbackDelta < 0.001) return;
 
-    const delta = Math.abs(el.currentTime - currentTimeSec);
-    // Only force sync if the difference is significant (e.g. user clicked timeline).
-    if (delta > 0.15) {
-      el.currentTime = currentTimeSec;
+    if (el.readyState === 0) return;
+    const localTime = Math.max(0, currentTimeSec - clipOffset);
+    const delta = Math.abs(el.currentTime - localTime);
+    // Preserve sub-frame precision so keyboard and button frame steps reach the player.
+    if (delta > 0.0001) {
+      el.currentTime = localTime;
     }
-  }, [currentTimeSec]);
+  }, [currentTimeSec, clipOffset, activeUrl]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     el.playbackRate = playbackRate;
-  }, [playbackRate]);
+  }, [playbackRate, activeUrl]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     el.muted = isMuted;
-  }, [isMuted]);
+  }, [isMuted, activeUrl]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     if (isPlaying) {
-      void el.play().catch(() => setIsPlaying(false));
+      void el.play().catch(() => { if (videoRef.current === el) setIsPlaying(false); });
     } else {
       el.pause();
     }
-  }, [isPlaying, setIsPlaying]);
+  }, [isPlaying, setIsPlaying, activeUrl]);
 
   const right = useMemo(() => {
     return (
@@ -91,12 +107,6 @@ export function VideoPanel() {
       </div>
     );
   }, [currentTimeSec, durationSec]);
-
-  function step(deltaFrames: number) {
-    const frameSec = 1 / Math.max(1, detectedFps || 30);
-    const next = Math.max(0, currentTimeSec + deltaFrames * frameSec);
-    setCurrentTimeSec(next);
-  }
 
   const handleSliderMouseMove = (e: React.MouseEvent) => {
     if (!sliderRef.current || !durationSec) return;
@@ -111,23 +121,39 @@ export function VideoPanel() {
     <Panel title="Player" right={right}>
       <div className="grid h-full min-h-0 min-w-0 grid-rows-[1fr_auto] gap-2 p-2">
         <div className={cn('relative min-h-0 overflow-hidden rounded-md border bg-black')}>
-          {videoSourceUrl ? (
+          {activeUrl ? (
             <video
+              key={activeUrl}
               ref={videoRef}
-              src={videoSourceUrl}
+              src={activeUrl}
               className="h-full w-full object-contain"
               onTimeUpdate={(e) => {
-                const t = (e.currentTarget as HTMLVideoElement).currentTime;
+                if (e.currentTarget !== videoRef.current) return;
+                const t = e.currentTarget.currentTime + clipOffset;
                 lastInternalTimeRef.current = t;
                 setCurrentTimeSec(t);
               }}
               onLoadedMetadata={(e) => {
-                const el = e.currentTarget as HTMLVideoElement;
-                setDurationSec(el.duration || 0);
-                if (el.duration) setVideoDurationSec(el.duration);
+                const el = e.currentTarget;
+                if (el !== videoRef.current) return;
+                setPlaybackError('');
+                if (clips) {
+                  setDurationSec(clips.reduce((sum, clip) => sum + clip.durationSec, 0));
+                  el.currentTime = Math.min(el.duration, Math.max(0, useVideoStore.getState().currentTimeSec - clipOffset));
+                } else {
+                  setDurationSec(el.duration || 0);
+                  if (el.duration) setVideoDurationSec(el.duration);
+                }
+                el.playbackRate = playbackRate; el.muted = isMuted;
+                if (useVideoStore.getState().isPlaying) void el.play().catch(() => { if (videoRef.current === el) setIsPlaying(false); });
               }}
               onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
+              onPause={(e) => { if (e.currentTarget === videoRef.current && !(e.currentTarget.ended && hasNextClip)) setIsPlaying(false); }}
+              onEnded={() => {
+                if (hasNextClip && activeClip) setCurrentTimeSec(activeClip.end);
+                else setIsPlaying(false);
+              }}
+              onError={() => { setIsPlaying(false); setPlaybackError('This clip could not be played. Check that the original video is supported by your browser.'); }}
               controls={false}
             />
           ) : (
@@ -151,8 +177,11 @@ export function VideoPanel() {
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              const url = URL.createObjectURL(file);
-              setVideoFile(file, url);
+              e.currentTarget.value = '';
+              try {
+                if (window.electron) setVideoFile(file, URL.createObjectURL(file));
+                else await attachBrowserVideo(file);
+              } catch (err) { window.alert(storageError(err)); return; }
               // Detect FPS via ffprobe (async). Only apply if this is still the active file.
               try {
                 const fps = await probeVideoFps(file);
@@ -162,21 +191,21 @@ export function VideoPanel() {
               } catch (err) {
                 console.warn('[video] fps probe failed', err);
               }
-              e.currentTarget.value = '';
             }}
           />
         </div>
 
         <div className="rounded-md border bg-card p-2">
+          {playbackError && <p role="alert" className="mb-2 text-xs text-destructive">{playbackError}</p>}
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="icon" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
 
-            <Button variant="outline" size="icon" onClick={() => step(-1)} aria-label="Frame backward">
+            <Button variant="outline" size="icon" onClick={() => stepVideoFrame(-1)} aria-label="Frame backward" title="Previous frame (,)">
               <SkipBack className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" onClick={() => step(1)} aria-label="Frame forward">
+            <Button variant="outline" size="icon" onClick={() => stepVideoFrame(1)} aria-label="Frame forward" title="Next frame (.)">
               <SkipForward className="h-4 w-4" />
             </Button>
 
@@ -216,21 +245,22 @@ export function VideoPanel() {
 
             <Select
               value={String(playbackRate)}
-              onValueChange={(v) => setPlaybackRate((Number(v) as 0.5 | 1 | 2) ?? 1)}
+              onValueChange={(v) => setPlaybackRate((Number(v) as 0.5 | 1 | 2 | 3) ?? 1)}
               disabled={!videoSourceUrl}
             >
-              <SelectTrigger className="h-8 w-[110px]">
+              <SelectTrigger aria-label="Playback speed" className="h-8 w-[110px]">
                 <SelectValue placeholder="Speed" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="0.5">0.5×</SelectItem>
                 <SelectItem value="1">1×</SelectItem>
                 <SelectItem value="2">2×</SelectItem>
+                <SelectItem value="3">3×</SelectItem>
               </SelectContent>
             </Select>
 
             {videoMeta?.fileName ? (
-              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{videoMeta.fileName}</div>
+              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{activeClip ? `Clip ${clipIndex + 1}/${clips?.length}: ${activeClip.clip.fileName}` : videoMeta.fileName}</div>
             ) : null}
           </div>
         </div>

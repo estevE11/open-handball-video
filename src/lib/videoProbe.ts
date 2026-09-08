@@ -25,57 +25,45 @@ export async function probeVideoFps(file: File | string): Promise<number | null>
   const inputName = `probe_${Date.now()}.mp4`;
   const outName = `probe_${Date.now()}.json`;
 
-  // Best-effort cleanup.
   try {
-    await ffmpeg.deleteFile(inputName);
-  } catch {
-    // ignore
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    // ffprobe: write json to file, then read it back
+    await ffmpeg.ffprobe(
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=avg_frame_rate,r_frame_rate',
+        '-of',
+        'json',
+        inputName,
+        '-o',
+        outName,
+      ],
+      30_000,
+    );
+
+    const raw = (await ffmpeg.readFile(outName)) as Uint8Array;
+    const jsonText = new TextDecoder().decode(raw);
+    const parsed = JSON.parse(jsonText) as {
+      streams?: Array<{ avg_frame_rate?: string; r_frame_rate?: string }>;
+    };
+
+    const stream = parsed.streams?.[0];
+    const avg = parseRational(stream?.avg_frame_rate);
+    const r = parseRational(stream?.r_frame_rate);
+    const fps = (avg && avg > 0 ? avg : r) ?? null;
+
+    if (!fps) return null;
+    // Sanity range: typical sports footage.
+    if (fps < 1 || fps > 240) return null;
+    return roundFps(fps);
+  } finally {
+    await Promise.all([inputName, outName].map((path) => ffmpeg.deleteFile(path).catch(() => {})));
   }
-  try {
-    await ffmpeg.deleteFile(outName);
-  } catch {
-    // ignore
-  }
-
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
-
-  // ffprobe: write json to file, then read it back
-  await ffmpeg.ffprobe(
-    [
-      '-v',
-      'error',
-      '-select_streams',
-      'v:0',
-      '-show_entries',
-      'stream=avg_frame_rate,r_frame_rate',
-      '-of',
-      'json',
-      inputName,
-      '-o',
-      outName,
-    ],
-    30_000,
-  );
-
-  const raw = (await ffmpeg.readFile(outName)) as Uint8Array;
-  const jsonText = new TextDecoder().decode(raw);
-  const parsed = JSON.parse(jsonText) as {
-    streams?: Array<{ avg_frame_rate?: string; r_frame_rate?: string }>;
-  };
-
-  const stream = parsed.streams?.[0];
-  const avg = parseRational(stream?.avg_frame_rate);
-  const r = parseRational(stream?.r_frame_rate);
-  const fps = (avg && avg > 0 ? avg : r) ?? null;
-
-  // Cleanup, but keep ffmpeg loaded.
-  void ffmpeg.deleteFile(inputName);
-  void ffmpeg.deleteFile(outName);
-
-  if (!fps) return null;
-  // Sanity range: typical sports footage.
-  if (fps < 1 || fps > 240) return null;
-  return roundFps(fps);
 }
 
 

@@ -1,10 +1,9 @@
-import { ChevronLeft, Download, FolderOpen, Settings, Upload } from 'lucide-react';
-import { useMemo, useRef } from 'react';
+import { ChevronLeft, Download, Settings, Upload } from 'lucide-react';
+import { useMemo } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useProjectStore } from '@/store/projectStore';
-import { coerceProjectData, readJsonFile } from '@/lib/projectIo';
 import { useVideoStore } from '@/store/videoStore';
 
 type TopBarProps = {
@@ -15,12 +14,9 @@ type TopBarProps = {
 };
 
 export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }: TopBarProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const exportProjectJson = useProjectStore((s) => s.exportProjectJson);
-  const replaceProject = useProjectStore((s) => s.replaceProject);
   const resetProject = useProjectStore((s) => s.resetProject);
-  const clearVideoSourceUrl = useProjectStore((s) => s.clearVideoSourceUrl);
   const updatedAtMs = useProjectStore((s) => s.updatedAtMs);
   const resetVideoRuntime = useVideoStore((s) => s.reset);
 
@@ -44,20 +40,11 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
     URL.revokeObjectURL(url);
   }
 
-  async function onLoadProjectFile(file: File) {
-    const raw = await readJsonFile(file);
-    const data = coerceProjectData(raw);
-    replaceProject(data);
-    // Force user to re-upload video for the loaded project.
-    clearVideoSourceUrl();
-    resetVideoRuntime();
-  }
-
   return (
     <div className="flex h-12 items-center gap-2 border-b bg-card px-2">
       <div className="flex items-center gap-2">
         {showBackButton && (
-          <Button variant="ghost" size="sm" onClick={onBack} className="mr-1 h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back to projects" className="mr-1 h-8 w-8 p-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
         )}
@@ -77,24 +64,7 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              Save Project
-            </Button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                await onLoadProjectFile(file);
-                e.currentTarget.value = '';
-              }}
-            />
-            <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
-              <FolderOpen className="mr-2 h-4 w-4" />
-              Load Project
+              Export JSON
             </Button>
 
             <Separator orientation="vertical" className="mx-1 h-6" />
@@ -115,8 +85,8 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
           variant="ghost"
           size="sm"
           onClick={() => {
-            resetProject();
-            resetVideoRuntime();
+            if (onBack) onBack();
+            else { resetProject(); resetVideoRuntime(); }
           }}
         >
           New

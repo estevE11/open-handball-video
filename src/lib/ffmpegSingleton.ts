@@ -1,5 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import workerURL from '@ffmpeg/ffmpeg/worker?url';
+import workerURL from '@ffmpeg/ffmpeg/worker?worker&url';
 import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
 
@@ -68,6 +68,8 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
       }
     } catch (e) {
       console.error('[ffmpeg] load() failed', e);
+      ffmpeg.terminate();
+      loadPromise = null;
       throw e;
     } finally {
       const dt = Math.round(performance.now() - t0);

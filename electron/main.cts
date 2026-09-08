@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'node:url';
 import { spawn } from 'child_process';
 
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
@@ -99,7 +100,7 @@ ipcMain.handle('get-videos', async () => {
         return {
           name: file,
           path: filePath,
-          url: `file://${filePath}`,
+          url: pathToFileURL(filePath).href,
           size: stats.size,
           createdAt: stats.birthtimeMs,
           modifiedAt: stats.mtimeMs
@@ -159,6 +160,7 @@ ipcMain.handle('read-file', async (_event, filePath: string) => {
 });
 
 ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segments, addGap, mainLabels }) => {
+  const { getSegmentTitles } = await import('./segmentTitles.js');
   return new Promise(async (resolve, reject) => {
     try {
       const env = { ...process.env };
@@ -229,17 +231,16 @@ ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segme
 
       segments.forEach((seg: any, i: number) => {
         const label = mainLabels.find((l: any) => l.id === seg.mainLabelId);
-        const primaryText = label?.defaultName || label?.name || 'Tag';
-        const secondaryText = (label?.defaultName && label?.name !== label?.defaultName) ? label?.name : null;
+        const { primaryText, secondaryText } = getSegmentTitles(seg, label);
 
         let overlayFilter = '';
         if (hasDrawtext) {
           const pText = primaryText.replace(/'/g, "'\\\\''").replace(/:/g, '\\:');
           const sText = secondaryText ? secondaryText.replace(/'/g, "'\\\\''").replace(/:/g, '\\:') : '';
 
-          overlayFilter = `,drawtext=fontfile='${fontPath}':text='${pText}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
+          overlayFilter = `,drawtext=fontfile='${fontPath}':expansion=none:text='${pText}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
           if (secondaryText) {
-            overlayFilter += `,drawtext=fontfile='${fontPath}':text='${sText}':x=30:y=85:fontsize=22:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
+            overlayFilter += `,drawtext=fontfile='${fontPath}':expansion=none:text='${sText}':x=30:y=85:fontsize=22:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
           }
         }
 
@@ -287,4 +288,25 @@ ipcMain.handle('run-native-export', async (event, { inputPath, outputPath, segme
       reject(error);
     }
   });
+});
+
+
+ipcMain.handle('get-clip-projects', async () => {
+  ensureFoldersExist();
+  const files = await fs.promises.readdir(getSavesFolderPath());
+  const projects = [];
+  for (const file of files.filter((name) => name.endsWith('.json'))) {
+    try {
+      const data = JSON.parse(await fs.promises.readFile(path.join(getSavesFolderPath(), file), 'utf8'));
+      if (data.electronProjectKey && Array.isArray(data.clips)) projects.push(data);
+    } catch (error) { console.warn('Could not read saved project', file, error); }
+  }
+  return projects;
+});
+
+ipcMain.handle('run-native-clip-export', async (_event, opts) => {
+  const { nativeClipExport } = await import('./nativeClipExport.js');
+  let fontPath = path.join(app.getAppPath(), 'public', 'fonts', 'Roboto-Bold.ttf');
+  if (!fs.existsSync(fontPath)) fontPath = path.join(app.getAppPath(), 'dist', 'fonts', 'Roboto-Bold.ttf');
+  return nativeClipExport(opts, { ffmpegPath, ffprobePath, fontPath });
 });

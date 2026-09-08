@@ -1,16 +1,22 @@
-import type { ProjectData } from "./project";
+import type { MainLabel, ProjectData, Segment } from "./project";
 
 export interface ElectronAPI {
+  runNativeClipExport: (opts: {
+    inputPaths: string[];
+    pieces: { sourceIndex: number; startTimeSec: number; endTimeSec: number; segmentIndex: number; primaryText: string; secondaryText?: string }[];
+    addGap: boolean;
+  }) => Promise<Uint8Array>;
+  getClipProjects: () => Promise<ProjectData[]>;
   getVideos: () => Promise<VideoFile[]>;
   loadProject: (videoFileName: string) => Promise<ProjectData | null>;
   saveProject: (videoFileName: string, projectData: ProjectData) => Promise<boolean>;
   readFile: (filePath: string) => Promise<Uint8Array>;
-  runNativeExport: (opts: { 
-    inputPath: string; 
-    outputPath: string; 
-    segments: any[]; 
-    addGap: boolean; 
-    mainLabels: any[] 
+  runNativeExport: (opts: {
+    inputPath: string;
+    outputPath: string;
+    segments: Segment[];
+    addGap: boolean;
+    mainLabels: MainLabel[]
   }) => Promise<boolean>;
 }
 

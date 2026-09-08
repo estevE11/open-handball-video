@@ -1,3 +1,4 @@
+import { getSegmentTitles } from '../../../electron/segmentTitles';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
@@ -11,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { formatTimecode } from '@/lib/time';
+import { exportClipSequence } from '@/lib/exportClipSequence';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { useProjectStore } from '@/store/projectStore';
 
@@ -23,6 +25,8 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
   const segments = useProjectStore((s) => s.segments);
+  const clips = useProjectStore((s) => s.clips);
+  const clipSources = useProjectStore((s) => s.session.clipSources);
   const videoFile = useProjectStore((s) => s.session.videoFile);
   const videoSourceUrl = useProjectStore((s) => s.session.videoSourceUrl);
 
@@ -73,7 +77,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const activeVideoInput = videoFile || videoSourceUrl;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!isRendering) onOpenChange(next); }}>
       <DialogContent className="sm:max-w-[980px]">
         <DialogHeader>
           <DialogTitle>Export Studio</DialogTitle>
@@ -224,7 +228,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[220px]">Label</TableHead>
+                  <TableHead className="w-[220px]">Clip / type</TableHead>
                   <TableHead className="w-[200px]">Start</TableHead>
                   <TableHead className="w-[200px]">End</TableHead>
                   <TableHead>Secondary Tags</TableHead>
@@ -239,14 +243,14 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   </TableRow>
                 ) : (
                   filtered.slice(0, 200).map((seg) => {
-                    const label = mainLabels.find((l) => l.id === seg.mainLabelId)?.name ?? 'Unknown';
+                    const titles = getSegmentTitles(seg, mainLabels.find((l) => l.id === seg.mainLabelId));
                     const tags = seg.secondaryLabelIds
                       .map((id) => secondaryLabels.find((s) => s.id === id)?.name)
                       .filter(Boolean)
                       .join(', ');
                     return (
                       <TableRow key={seg.id}>
-                        <TableCell className="font-medium">{label}</TableCell>
+                        <TableCell className="font-medium"><div>{titles.primaryText}</div><div className="text-xs font-normal text-muted-foreground">{titles.secondaryText}</div></TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.startTimeSec)}</TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.endTimeSec)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{tags || '—'}</TableCell>
@@ -280,15 +284,13 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   try {
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (filtered)', filtered.length);
-                    const blob = await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', {
-                      addGap,
-                      mainLabels,
-                      onProgress: (p, r) => {
-                        setPhase(p);
-                        setRatio(r);
-                        console.info('[Export Studio] progress', { phase: p, ratio: r });
-                      },
-                    });
+                    const options = {
+                      addGap, mainLabels,
+                      onProgress: (p: string, r: number) => { setPhase(p); setRatio(r); },
+                    };
+                    const blob = clips
+                      ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), filtered, options)
+                      : await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', options);
                     downloadBlob('export.mp4', blob);
                   } catch (e) {
                     setError(e instanceof Error ? e.message : 'Export failed');

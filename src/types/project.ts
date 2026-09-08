@@ -48,7 +48,16 @@ export type VideoMeta = {
   fps?: number;
 };
 
+export type VideoClip = VideoMeta & {
+  id: Id;
+  durationSec: number;
+};
+
 export type ProjectData = {
+  /** Ordered sources for a split match. Absent on legacy single-video projects. */
+  clips?: VideoClip[];
+  /** Separate sidecar for an Electron split-match project. */
+  electronProjectKey?: string;
   schemaVersion: 1;
   projectId: Id;
   createdAtMs: number;

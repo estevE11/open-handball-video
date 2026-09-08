@@ -26,24 +26,62 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/**
- * Very lightweight schema check to protect against obvious bad imports.
- * (We can harden this later with zod once UI is in place.)
- */
+/** Validate imported JSON before it reaches the editor or persistent library. */
 export function coerceProjectData(raw: unknown): ProjectData {
   if (!isObject(raw)) throw new Error('Invalid project file: expected an object');
-  const v = raw.schemaVersion;
-  if (v !== PROJECT_SCHEMA_VERSION) {
-    throw new Error(`Unsupported project schemaVersion: ${String(v)}`);
+  if (raw.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+    throw new Error(`Unsupported project schemaVersion: ${String(raw.schemaVersion)}`);
   }
-
-  // Merge over defaults to ensure required keys exist.
   const base = createEmptyProject();
+  const data = { ...base, ...raw };
+  const text = (v: unknown) => typeof v === 'string';
+  const number = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  const optionalText = (v: unknown) => v === undefined || text(v);
+  const labels = data.mainLabels;
+  const secondary = data.secondaryLabels;
+  const segments = data.segments;
+  const meta = data.videoMeta;
+  if (!text(data.projectId) || !data.projectId || !number(data.createdAtMs) || !number(data.updatedAtMs)
+    || !isObject(data.settings) || !number(data.settings.fps) || data.settings.fps <= 0
+    || !Array.isArray(labels) || !labels.every((l: unknown) => isObject(l) && text(l.id) && text(l.name)
+      && text(l.color) && text(l.hotkey) && optionalText(l.defaultName) && number(l.preRollSec) && number(l.postRollSec))
+    || !Array.isArray(secondary) || !secondary.every((l: unknown) => isObject(l) && text(l.id) && text(l.name) && optionalText(l.hotkey))
+    || !Array.isArray(segments) || !segments.every((s: unknown) => isObject(s) && text(s.id) && text(s.mainLabelId)
+      && optionalText(s.name) && number(s.startTimeSec) && number(s.endTimeSec) && number(s.createdAtMs)
+      && Array.isArray(s.secondaryLabelIds) && s.secondaryLabelIds.every(text))
+    || (meta !== null && (!isObject(meta) || !text(meta.fileName) || !text(meta.fileType)
+      || !number(meta.fileSize) || !number(meta.lastModified)
+      || (meta.durationSec !== undefined && !number(meta.durationSec)) || (meta.fps !== undefined && !number(meta.fps))))) {
+    throw new Error('Invalid project file: malformed labels, segments, settings, or video metadata.');
+  }
+  if (data.clips !== undefined) {
+    if (!Array.isArray(data.clips) || data.clips.length === 0 || !data.clips.every((clip: unknown) =>
+      isObject(clip) && text(clip.id) && !!clip.id && text(clip.fileName) && text(clip.fileType)
+      && number(clip.fileSize) && number(clip.lastModified) && number(clip.durationSec) && Number(clip.durationSec) > 0
+      && (clip.fps === undefined || (number(clip.fps) && Number(clip.fps) > 0)))
+      || new Set(data.clips.map((clip) => clip.id)).size !== data.clips.length) {
+      throw new Error('Invalid project file: each clip needs a unique ID and a positive duration.');
+    }
+    if (!meta) throw new Error('Invalid project file: clips require video metadata.');
+    // Total match time and stored size always derive from the source list.
+    data.videoMeta = { ...meta, durationSec: data.clips.reduce((sum, clip) => sum + clip.durationSec, 0),
+      fileSize: data.clips.reduce((sum, clip) => sum + clip.fileSize, 0) };
+  }
+  if (data.electronProjectKey !== undefined && (typeof data.electronProjectKey !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(data.electronProjectKey))) {
+    throw new Error('Invalid desktop project key.');
+  }
+  // Only schema fields may enter the store; imported keys must not replace actions/session.
   return {
-    ...base,
-    ...raw,
     schemaVersion: PROJECT_SCHEMA_VERSION,
+    projectId: data.projectId,
+    createdAtMs: data.createdAtMs,
+    updatedAtMs: data.updatedAtMs,
+    videoMeta: data.videoMeta,
+    ...(data.electronProjectKey ? { electronProjectKey: data.electronProjectKey } : {}),
+    ...(data.clips ? { clips: data.clips } : {}),
+    mainLabels: labels,
+    secondaryLabels: secondary,
+    segments,
+    settings: { fps: data.settings.fps },
   } as ProjectData;
 }
-
-

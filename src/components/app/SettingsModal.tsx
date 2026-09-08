@@ -76,8 +76,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]"> </TableHead>
-                    <TableHead>Display Name</TableHead>
-                    <TableHead className="w-[100px]">Type</TableHead>
+                    <TableHead>Type name</TableHead>
+                    <TableHead className="w-[100px]">Original preset</TableHead>
                     <TableHead className="w-[110px]">Color</TableHead>
                     <TableHead className="w-[120px]">Pre-roll (s)</TableHead>
                     <TableHead className="w-[120px]">Post-roll (s)</TableHead>

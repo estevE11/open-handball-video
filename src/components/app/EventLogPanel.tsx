@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { getSegmentTitles } from '../../../electron/segmentTitles';
 import { formatTimecode } from '@/lib/time';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -20,13 +21,13 @@ export function EventLogPanel() {
   const toggleSecondaryOnSelectedSegment = useProjectStore((s) => s.toggleSecondaryOnSelectedSegment);
   const selectedSegmentId = useProjectStore((s) => s.selectedSegmentId);
   const setSelectedSegmentId = useProjectStore((s) => s.setSelectedSegmentId);
-  const upsertMainLabel = useProjectStore((s) => s.upsertMainLabel);
+  const renameSegment = useProjectStore((s) => s.renameSegment);
 
   const setCurrentTimeSec = useVideoStore((s) => s.setCurrentTimeSec);
   const currentTimeSec = useVideoStore((s) => s.currentTimeSec);
 
-  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
-  const [tempLabelName, setTempLabelName] = useState('');
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
+  const [tempSegmentName, setTempSegmentName] = useState('');
 
   const items = [...segments].sort((a, b) => {
     if (a.startTimeSec !== b.startTimeSec) return a.startTimeSec - b.startTimeSec;
@@ -37,13 +38,10 @@ export function EventLogPanel() {
   const selectedSegment = segments.find((s) => s.id === selectedSegmentId);
   const selectedLabel = selectedSegment ? mainLabels.find((l) => l.id === selectedSegment.mainLabelId) : null;
 
-  const saveLabelName = () => {
-    if (!editingLabelId) return;
-    const label = mainLabels.find((l) => l.id === editingLabelId);
-    if (label && tempLabelName.trim()) {
-      upsertMainLabel({ ...label, name: tempLabelName.trim() });
-    }
-    setEditingLabelId(null);
+  const saveSegmentName = () => {
+    if (!editingSegmentId) return;
+    renameSegment(editingSegmentId, tempSegmentName.trim());
+    setEditingSegmentId(null);
   };
 
   return (
@@ -79,7 +77,7 @@ export function EventLogPanel() {
                     <span className="flex items-center gap-1.5">
                       Target: 
                       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: selectedLabel?.color }} />
-                      <span className="text-foreground">{selectedLabel?.name}</span>
+                      <span className="text-foreground">{getSegmentTitles(selectedSegment, selectedLabel ?? undefined).primaryText}</span>
                       <span className="font-mono">({formatTimecode(selectedSegment.startTimeSec)})</span>
                     </span>
                   ) : (
@@ -149,15 +147,17 @@ export function EventLogPanel() {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    {editingLabelId === label?.id ? (
+                    {editingSegmentId === seg.id ? (
                       <Input
                         autoFocus
-                        value={tempLabelName}
-                        onChange={(e) => setTempLabelName(e.target.value)}
-                        onBlur={saveLabelName}
+                        aria-label="Clip title"
+                        placeholder={label?.name}
+                        value={tempSegmentName}
+                        onChange={(e) => setTempSegmentName(e.target.value)}
+                        onBlur={saveSegmentName}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveLabelName();
-                          if (e.key === 'Escape') setEditingLabelId(null);
+                          if (e.key === 'Enter') saveSegmentName();
+                          if (e.key === 'Escape') setEditingSegmentId(null);
                         }}
                         className="h-6 py-0 px-1 text-sm bg-background"
                         onClick={(e) => e.stopPropagation()}
@@ -174,31 +174,33 @@ export function EventLogPanel() {
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           if (label) {
-                            setEditingLabelId(label.id);
-                            setTempLabelName(label.name);
+                            setEditingSegmentId(seg.id);
+                            setTempSegmentName(seg.name ?? label.name);
                           }
                         }}
-                        title="Double-click to rename primary tag"
+                        title="Double-click to rename this clip"
                       >
-                        {label?.name ?? 'Unknown label'}
-                        <Edit2 
-                          className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (label) {
-                              setEditingLabelId(label.id);
-                              setTempLabelName(label.name);
-                            }
-                          }}
-                        />
+                        {getSegmentTitles(seg, label).primaryText}
                       </button>
                     )}
+                    <Button
+                      variant="ghost" size="icon" className="h-6 w-6 shrink-0"
+                      aria-label={`Rename clip ${getSegmentTitles(seg, label).primaryText}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEditingSegmentId(seg.id);
+                        setTempSegmentName(seg.name ?? label?.name ?? '');
+                      }}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
                     <div className="shrink-0 font-mono text-xs text-muted-foreground">
                       {formatTimecode(seg.startTimeSec)} → {formatTimecode(seg.endTimeSec)}
                     </div>
                   </div>
 
                   <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="mr-1 text-xs text-muted-foreground">{label?.name ?? 'Unknown type'}</span>
                     {tags.length ? (
                       tags.map((t) => (
                         <Badge key={t} variant="secondary" className="h-5 px-1.5 text-[11px]">
