@@ -37,3 +37,14 @@ it('renders an individual title large and its unchanged tag type small', async (
   expect(filters).toContain("text='3\\:2\\:1':x=30:y=30:fontsize=44");
   expect(filters).toContain("text='Attack':x=30:y=85:fontsize=22");
 });
+
+it('uses native export bytes directly without leaving an intermediate beside the source', async () => {
+  const electron = { runNativeExport: vi.fn(async () => new Uint8Array([4, 5, 6])), readFile: vi.fn() };
+  Object.assign(window, { electron });
+  try {
+    const blob = await exportFilteredSegmentsToMp4('file:///videos/match.mp4', segments);
+    expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([4, 5, 6]);
+    expect(electron.runNativeExport).toHaveBeenCalledWith({ inputPath: '/videos/match.mp4', segments, addGap: false, mainLabels: [] });
+    expect(electron.readFile).not.toHaveBeenCalled();
+  } finally { delete window.electron; }
+});

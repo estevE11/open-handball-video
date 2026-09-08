@@ -13,11 +13,10 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<Uint8Array>;
   runNativeExport: (opts: {
     inputPath: string;
-    outputPath: string;
     segments: Segment[];
     addGap: boolean;
     mainLabels: MainLabel[]
-  }) => Promise<boolean>;
+  }) => Promise<Uint8Array>;
 }
 
 export interface VideoFile {

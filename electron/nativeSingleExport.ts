@@ -1,16 +1,22 @@
 import { spawn } from 'node:child_process';
+import { readTemporaryVideoExport } from './temporaryVideoExport.js';
 import { getSegmentTitles } from './segmentTitles.js';
 
 export type NativeSingleExportOptions = {
   inputPath: string;
-  outputPath: string;
   segments: { name?: string; mainLabelId: string; startTimeSec: number; endTimeSec: number }[];
   mainLabels: { id: string; name: string }[];
   addGap: boolean;
 };
-export async function nativeSingleExport(
-  { inputPath, outputPath, segments, addGap, mainLabels }: NativeSingleExportOptions,
-  { ffmpegPath, ffprobePath, fontPath }: { ffmpegPath: string; ffprobePath: string; fontPath: string },
+type NativeExportConfig = { ffmpegPath: string; ffprobePath: string; fontPath: string };
+
+export async function nativeSingleExport(opts: NativeSingleExportOptions, config: NativeExportConfig) {
+  return readTemporaryVideoExport((outputPath) => renderNativeSingleExport({ ...opts, outputPath }, config));
+}
+
+async function renderNativeSingleExport(
+  { inputPath, outputPath, segments, addGap, mainLabels }: NativeSingleExportOptions & { outputPath: string },
+  { ffmpegPath, ffprobePath, fontPath }: NativeExportConfig,
 ) {
   function run(binary: string, args: string[]) {
     return new Promise<string>((resolve, reject) => {

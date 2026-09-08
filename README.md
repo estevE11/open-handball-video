@@ -26,7 +26,7 @@ The storage panel reports estimated available bytes and predicts additional proj
 
 Videos stay on your device and are not uploaded to Vercel. Browser storage belongs to the site's origin; another browser, device, or deployment hostname has a separate library. Keep original videos and exported JSON as backups. Clearing site data deletes the library. **Keep storage persistent** asks the browser to protect stored projects from automatic eviction; browsers may decline, and private browsing storage is temporary.
 
-Electron continues reading videos and project JSON from `Documents/open-handball-video`.
+Electron continues reading videos and project JSON from `Documents/open-handball-video`. Native exports use isolated temporary directories, return the completed video for download, and remove intermediates after success or failure.
 
 ## Playback and clip titles
 

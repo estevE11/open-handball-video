@@ -40,25 +40,17 @@ export async function exportFilteredSegmentsToMp4(
   // ELECTRON NATIVE EXPORT PATH
   if (window.electron && typeof videoInput === 'string' && videoInput.startsWith('file://')) {
     const inputPath = decodeURIComponent(videoInput.replace(/^file:\/\//, ''));
-    // Use a unique temp path for the native export
-    const outputPath = inputPath.replace(/\.[^/.]+$/, "") + `_export_${Date.now()}.mp4`;
-    
-    console.info('[export] using native electron export', { inputPath, outputPath });
     onProgress('native:export', 0);
     
     try {
-      await window.electron.runNativeExport({
+      const data = await window.electron.runNativeExport({
         inputPath,
-        outputPath,
         segments,
         addGap,
         mainLabels
       });
       onProgress('native:export', 1);
 
-      // Read the resulting file back as a blob
-      const data = await window.electron.readFile(outputPath);
-      
       // Ensure we return a Blob backed by a normal ArrayBuffer (not SharedArrayBuffer).
       const buffer = new Uint8Array(data.length);
       buffer.set(data);
