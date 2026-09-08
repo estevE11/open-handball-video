@@ -158,14 +158,27 @@ ipcMain.handle('read-file', async (_event, filePath: string) => {
   }
 });
 
-ipcMain.handle('run-native-export', async (event, opts) => {
+const exportJobs = new Map<string, AbortController>();
+async function runExportJob(event: Electron.IpcMainInvokeEvent, exportId: string, run: (signal: AbortSignal) => Promise<Uint8Array>) {
+  const key = `${event.sender.id}:${exportId}`;
+  if (exportJobs.has(key)) throw new Error('This export is already running.');
+  const controller = new AbortController();
+  exportJobs.set(key, controller);
+  const destroyed = () => controller.abort();
+  event.sender.once('destroyed', destroyed);
+  try { return await run(controller.signal); }
+  finally { exportJobs.delete(key); event.sender.removeListener('destroyed', destroyed); }
+}
+ipcMain.handle('cancel-export', (event, exportId: string) => { exportJobs.get(`${event.sender.id}:${exportId}`)?.abort(); });
+
+ipcMain.handle('run-native-export', (event, opts) => runExportJob(event, opts.exportId, async (signal) => {
   const { nativeSingleExport } = await import('./nativeSingleExport.js');
   let fontPath = path.join(app.getAppPath(), 'public', 'fonts', 'Roboto-Bold.ttf');
   if (!fs.existsSync(fontPath)) fontPath = path.join(app.getAppPath(), 'dist', 'fonts', 'Roboto-Bold.ttf');
   return nativeSingleExport(opts, { ffmpegPath, ffprobePath, fontPath }, (phase, ratio) => {
     if (!event.sender.isDestroyed()) event.sender.send('export-progress', { exportId: opts.exportId, phase, ratio });
-  });
-});
+  }, signal);
+}));
 
 
 ipcMain.handle('get-clip-projects', async () => {
@@ -181,14 +194,14 @@ ipcMain.handle('get-clip-projects', async () => {
   return projects;
 });
 
-ipcMain.handle('run-native-clip-export', async (event, opts) => {
+ipcMain.handle('run-native-clip-export', (event, opts) => runExportJob(event, opts.exportId, async (signal) => {
   const { nativeClipExport } = await import('./nativeClipExport.js');
   let fontPath = path.join(app.getAppPath(), 'public', 'fonts', 'Roboto-Bold.ttf');
   if (!fs.existsSync(fontPath)) fontPath = path.join(app.getAppPath(), 'dist', 'fonts', 'Roboto-Bold.ttf');
   return nativeClipExport(opts, { ffmpegPath, ffprobePath, fontPath }, (phase, ratio) => {
     if (!event.sender.isDestroyed()) event.sender.send('export-progress', { exportId: opts.exportId, phase, ratio });
-  });
-});
+  }, signal);
+}));
 
 ipcMain.handle('probe-video-metadata', async (_event, source: string) => {
   const { probeNativeVideo } = await import('./videoMetadata.js');

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
+  cancelExport: (exportId: string) => ipcRenderer.invoke('cancel-export', exportId),
   onExportProgress: (callback: (progress: { exportId: string; phase: string; ratio: number }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: { exportId: string; phase: string; ratio: number }) => callback(progress);
     ipcRenderer.on('export-progress', listener);

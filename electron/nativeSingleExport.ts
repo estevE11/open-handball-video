@@ -1,6 +1,7 @@
+import { runNativeCommand } from './nativeCommand.js';
+import { checkExportCancelled } from './exportCancellation.js';
 import { fileURLToPath } from 'node:url';
-import { monotonicProgress, nativeProgressParser, type ExportProgress } from './exportProgress.js';
-import { spawn } from 'node:child_process';
+import { monotonicProgress, type ExportProgress } from './exportProgress.js';
 import { readTemporaryVideoExport } from './temporaryVideoExport.js';
 import { getSegmentTitles } from './segmentTitles.js';
 
@@ -12,10 +13,12 @@ export type NativeSingleExportOptions = {
 };
 type NativeExportConfig = { ffmpegPath: string; ffprobePath: string; fontPath: string };
 
-export async function nativeSingleExport(opts: NativeSingleExportOptions, config: NativeExportConfig, onProgress: ExportProgress = () => {}) {
+export async function nativeSingleExport(opts: NativeSingleExportOptions, config: NativeExportConfig, onProgress: ExportProgress = () => {}, signal?: AbortSignal) {
+  checkExportCancelled(signal);
   const report = monotonicProgress(onProgress);
   report('Preparing export', 0);
-  const bytes = await readTemporaryVideoExport((outputPath) => renderNativeSingleExport({ ...opts, outputPath }, config, report));
+  const bytes = await readTemporaryVideoExport((outputPath) => renderNativeSingleExport({ ...opts, outputPath }, config, report, signal), signal);
+  checkExportCancelled(signal);
   report('Export ready', 1);
   return bytes;
 }
@@ -24,20 +27,10 @@ async function renderNativeSingleExport(
   { inputPath, outputPath, segments, addGap, mainLabels }: NativeSingleExportOptions & { outputPath: string },
   { ffmpegPath, ffprobePath, fontPath }: NativeExportConfig,
   onProgress: ExportProgress,
+  signal?: AbortSignal,
 ) {
   if (inputPath.startsWith('file:')) inputPath = fileURLToPath(inputPath);
-  function run(binary: string, args: string[], onTime?: (seconds: number) => void) {
-    return new Promise<string>((resolve, reject) => {
-      const progress = nativeProgressParser(onTime ?? (() => {}));
-      const command = onTime ? ['-progress', 'pipe:1', '-nostats', ...args] : args;
-      const child = spawn(binary, command);
-      let stdout = ''; let stderr = '';
-      child.stdout.on('data', (data) => { if (onTime) progress(data.toString()); else stdout += data.toString(); });
-      child.stderr.on('data', (data) => { stderr = (stderr + data.toString()).slice(-6000); });
-      child.on('error', reject);
-      child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(`Video export failed (${code}): ${stderr}`)));
-    });
-  }
+  const run = (binary: string, args: string[], onTime?: (seconds: number) => void) => runNativeCommand(binary, args, { signal, onTime });
   if (!segments.length) throw new Error('No segments to export.');
   const probe = JSON.parse(await run(ffprobePath, ['-v', 'error', '-show_entries', 'stream=codec_type,width,height,sample_rate', '-of', 'json', inputPath])) as {
     streams: { codec_type: string; width?: number; height?: number; sample_rate?: string }[];

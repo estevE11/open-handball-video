@@ -1,6 +1,7 @@
 import type { MainLabel, ProjectData, Segment } from "./project";
 
 export interface ElectronAPI {
+  cancelExport: (exportId: string) => Promise<void>;
   probeVideoMetadata: (source: string) => Promise<{ fps?: number; durationSec?: number }>;
   onExportProgress: (callback: (progress: { exportId: string; phase: string; ratio: number }) => void) => () => void;
   runNativeClipExport: (opts: {

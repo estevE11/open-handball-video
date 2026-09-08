@@ -3,12 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 /** Read completed bytes before removing every intermediate, including on failures. */
-export async function readTemporaryVideoExport(render: (outputPath: string) => Promise<unknown>) {
+export async function readTemporaryVideoExport(render: (outputPath: string) => Promise<unknown>, signal?: AbortSignal) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ohv-single-export-'));
   try {
     const outputPath = path.join(directory, 'export.mp4');
     await render(outputPath);
-    return await fs.readFile(outputPath);
+    return await fs.readFile(outputPath, { signal });
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

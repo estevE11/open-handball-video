@@ -4,7 +4,8 @@ import { getSegmentTitles } from '../../electron/segmentTitles';
 import { fetchFile } from '@ffmpeg/util';
 
 import type { MainLabel, Segment } from '@/types/project';
-import { getFFmpeg } from '@/lib/ffmpegSingleton';
+import { withBrowserExport } from '@/lib/browserExportSession';
+import { checkExportCancelled } from '../../electron/exportCancellation';
 
 function toFixedSec(v: number): string {
   return (Math.max(0, v) || 0).toFixed(3);
@@ -24,6 +25,7 @@ async function safeDelete(ffmpeg: { deleteFile: (path: string) => Promise<boolea
 }
 
 export type ExportMp4Options = {
+  signal?: AbortSignal;
   onProgress?: (phase: string, ratio: number) => void;
   addGap?: boolean;
   mainLabels?: MainLabel[];
@@ -35,7 +37,8 @@ export async function exportFilteredSegmentsToMp4(
   outputName = 'export.mp4',
   opts: ExportMp4Options = {},
 ): Promise<Blob> {
-  const onProgress = monotonicProgress(opts.onProgress);
+  const onProgress = monotonicProgress((phase, ratio) => { if (!opts.signal?.aborted) opts.onProgress?.(phase, ratio); });
+  checkExportCancelled(opts.signal);
   const addGap = opts.addGap ?? false;
   const mainLabels = opts.mainLabels ?? [];
 
@@ -50,7 +53,7 @@ export async function exportFilteredSegmentsToMp4(
         segments,
         addGap,
         mainLabels
-      }), onProgress);
+      }), onProgress, opts.signal);
 
       // Ensure we return a Blob backed by a normal ArrayBuffer (not SharedArrayBuffer).
       const buffer = new Uint8Array(data.length);
@@ -59,6 +62,7 @@ export async function exportFilteredSegmentsToMp4(
       
       return blob;
     } catch (err) {
+      checkExportCancelled(opts.signal);
       console.error('[export] native export failed', err);
       throw new Error(`Native export failed: ${err}. Ensure FFmpeg is installed on your system.`);
     }
@@ -81,7 +85,7 @@ export async function exportFilteredSegmentsToMp4(
 
   console.info('[export] calling getFFmpeg()…');
   onProgress('Loading export engine', 0);
-  const ffmpeg = await getFFmpeg();
+  return withBrowserExport(opts.signal, async (ffmpeg) => {
   console.info('[export] getFFmpeg() resolved (core loaded)');
 
   const temporaryFiles = new Set<string>();
@@ -97,12 +101,13 @@ export async function exportFilteredSegmentsToMp4(
       // Construct font URL relative to the current page to handle Electron file:// and Vite dev/prod
       const fontUrl = new URL('fonts/Roboto-Bold.ttf', window.location.href).href;
       console.info('[export] fetching font from', fontUrl);
-      const fontResponse = await fetch(fontUrl);
+      const fontResponse = await fetch(fontUrl, { signal: opts.signal });
       if (!fontResponse.ok) throw new Error(`HTTP error! status: ${fontResponse.status}`);
       const fontData = await fontResponse.arrayBuffer();
       await ffmpeg.writeFile(fontName, new Uint8Array(fontData));
       console.info('[export] font loaded');
     } catch (err) {
+      checkExportCancelled(opts.signal);
       console.warn('[export] failed to load font, overlay might look poor or fail', err);
     }
 
@@ -239,6 +244,7 @@ export async function exportFilteredSegmentsToMp4(
           clipName,
         ]);
       } catch (err) {
+        checkExportCancelled(opts.signal);
         console.warn('[export] re-encode failed, falling back to -c copy (no overlay)', { clipName, err });
         await runFFmpeg(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
       }
@@ -269,6 +275,7 @@ export async function exportFilteredSegmentsToMp4(
       // Try stream copy first (fastest)
       await runFFmpeg(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', concatName, '-c', 'copy', outName]);
     } catch {
+      checkExportCancelled(opts.signal);
       // If stream copy concat fails (codec mismatch), re-encode the concat.
       console.warn('[export] concat -c copy failed, re-encoding concat');
       await runFFmpeg([
@@ -311,7 +318,9 @@ export async function exportFilteredSegmentsToMp4(
     console.groupEnd();
   }
   onProgress('Export ready', 1);
+  checkExportCancelled(opts.signal);
   return result;
+  });
 }
 
 

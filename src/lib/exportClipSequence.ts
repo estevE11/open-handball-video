@@ -2,14 +2,16 @@ import { runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProg
 import { monotonicProgress } from '../../electron/exportProgress';
 import { getSegmentTitles } from '../../electron/segmentTitles';
 import { fetchFile } from '@ffmpeg/util';
-import { getFFmpeg } from '@/lib/ffmpegSingleton';
+import { withBrowserExport } from '@/lib/browserExportSession';
+import { checkExportCancelled } from '../../electron/exportCancellation';
 import { splitSegmentsAcrossClips } from '@/lib/clipTimeline';
 import type { MainLabel, Segment, VideoClip } from '@/types/project';
 import { renderClipExport, type ExportPiece } from '../../electron/clipExportCore';
 
 export async function exportClipSequence(clips: VideoClip[], inputs: (File | string)[], segments: Segment[],
-  opts: { addGap?: boolean; mainLabels: MainLabel[]; onProgress?: (phase: string, ratio: number) => void }) {
-  const report = monotonicProgress(opts.onProgress);
+  opts: { signal?: AbortSignal; addGap?: boolean; mainLabels: MainLabel[]; onProgress?: (phase: string, ratio: number) => void }) {
+  const report = monotonicProgress((phase, ratio) => { if (!opts.signal?.aborted) opts.onProgress?.(phase, ratio); });
+  checkExportCancelled(opts.signal);
   if (inputs.length !== clips.length) throw new Error('Restore all original clips before exporting.');
   const pieces: ExportPiece[] = splitSegmentsAcrossClips(clips, segments).map((part) => {
     const label = opts.mainLabels.find((item) => item.id === part.segment.mainLabelId);
@@ -20,16 +22,16 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
     const data = await withNativeExportProgress((exportId) => window.electron!.runNativeClipExport({
       exportId,
       inputPaths: inputs as string[], pieces, addGap: !!opts.addGap,
-    }), report);
+    }), report, opts.signal);
     return new Blob([new Uint8Array(data)], { type: 'video/mp4' });
   }
   report('Loading export engine', 0);
-  const ffmpeg = await getFFmpeg();
+  return withBrowserExport(opts.signal, async (ffmpeg) => {
   const fontName = 'sequence-font.ttf';
   const probeName = 'sequence-probe.json';
   let result: Blob;
   try {
-    const font = await fetch(new URL('fonts/Roboto-Bold.ttf', window.location.href));
+    const font = await fetch(new URL('fonts/Roboto-Bold.ttf', window.location.href), { signal: opts.signal });
     if (!font.ok) throw new Error('Could not load the font for export labels.');
     await ffmpeg.writeFile(fontName, new Uint8Array(await font.arrayBuffer()));
     const data = await renderClipExport({
@@ -62,5 +64,7 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
     await Promise.all([fontName, probeName].map((name) => ffmpeg.deleteFile(name).catch(() => {})));
   }
   report('Export ready', 1);
+  checkExportCancelled(opts.signal);
   return result;
+  });
 }

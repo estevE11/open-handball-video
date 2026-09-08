@@ -48,3 +48,19 @@ it.each([false, true])('isolates native jobs and unsubscribes on failure=%s', as
     expect(unsubscribe).toHaveBeenCalledOnce();
   } finally { vi.unstubAllGlobals(); }
 });
+
+it('cancels only the matching native job and waits for its cleanup', async () => {
+  const controller = new AbortController();
+  let reject!: (error: Error) => void;
+  let id = '';
+  const unsubscribe = vi.fn();
+  const cancelExport = vi.fn(async (exportId) => { expect(exportId).toBe(id); reject(new Error('terminated')); });
+  vi.stubGlobal('window', { electron: { cancelExport, onExportProgress: () => unsubscribe } });
+  try {
+    const job = withNativeExportProgress((exportId) => { id = exportId; return new Promise((_resolve, fail) => { reject = fail; }); }, undefined, controller.signal);
+    controller.abort();
+    await expect(job).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancelExport).toHaveBeenCalledOnce();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  } finally { vi.unstubAllGlobals(); }
+});

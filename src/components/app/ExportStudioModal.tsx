@@ -1,6 +1,6 @@
 import { getSegmentTitles } from '../../../electron/segmentTitles';
 import { LoaderCircle, Check, ChevronsUpDown } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,8 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [mainLabelIds, setMainLabelIds] = useState<string[]>([]);
   const [secondaryIds, setSecondaryIds] = useState<string[]>([]);
   const [addGap, setAddGap] = useState(false);
+  const exportController = useRef<AbortController | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [phase, setPhase] = useState<string>('');
   const [ratio, setRatio] = useState<number>(0);
@@ -282,10 +284,15 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   </div>
                 </div>
               ) : null}
+              {isRendering && <Button variant="outline" disabled={isCancelling} onClick={() => {
+                setIsCancelling(true); exportController.current?.abort();
+              }}>{isCancelling ? 'Cancelling…' : 'Cancel export'}</Button>}
               <Button
                 disabled={!activeVideoInput || filtered.length === 0 || isRendering}
                 onClick={async () => {
                   if (!activeVideoInput) return;
+                  const controller = new AbortController();
+                  exportController.current = controller;
                   setIsRendering(true);
                   setError(null);
                   setPhase('Preparing export');
@@ -294,20 +301,22 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (filtered)', filtered.length);
                     const options = {
-                      addGap, mainLabels,
-                      onProgress: (p: string, r: number) => { setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
+                      addGap, mainLabels, signal: controller.signal,
+                      onProgress: (p: string, r: number) => { if (controller.signal.aborted) return; setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
                     };
                     const blob = clips
                       ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), filtered, options)
                       : await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', options);
+                    if (controller.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
                     downloadBlob('export.mp4', blob);
                     setPhase('Export ready');
                     setRatio(1);
                   } catch (e) {
-                    setError(e instanceof Error ? e.message : 'Export failed');
+                    if (controller.signal.aborted) { setPhase('Export cancelled'); setError(null); }
+                    else setError(e instanceof Error ? e.message : 'Export failed');
                     console.error('[Export Studio] export failed', e);
                   } finally {
-                    setIsRendering(false);
+                    setIsRendering(false); setIsCancelling(false); exportController.current = null;
                     console.groupEnd();
                   }
                 }}

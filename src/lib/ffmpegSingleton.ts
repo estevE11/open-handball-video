@@ -4,7 +4,17 @@ import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
 
 let ffmpegSingleton: FFmpeg | null = null;
+let loadingInstance: FFmpeg | null = null;
+let generation = 0;
 let loadPromise: Promise<FFmpeg> | null = null;
+
+export function resetFFmpeg(instance?: FFmpeg) {
+  if (instance && instance !== ffmpegSingleton && instance !== loadingInstance) return;
+  generation++;
+  ffmpegSingleton?.terminate();
+  if (loadingInstance !== ffmpegSingleton) loadingInstance?.terminate();
+  ffmpegSingleton = null; loadingInstance = null; loadPromise = null;
+}
 
 export type FfmpegProgress = {
   ratio: number; // 0..1
@@ -16,6 +26,8 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
 
   console.info('[ffmpeg] getFFmpeg() creating instance');
   const ffmpeg = new FFmpeg();
+  loadingInstance = ffmpeg;
+  const currentGeneration = generation;
   ffmpeg.on('log', ({ type, message }) => {
     // Forward ffmpeg internal logs to the console for debugging.
     const fn = type === 'fferr' ? console.warn : console.debug;
@@ -51,6 +63,7 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
     } catch (e) {
       console.warn('[ffmpeg] preflight failed (non-fatal)', e);
     }
+    if (generation !== currentGeneration) throw new DOMException('Export cancelled', 'AbortError');
     console.info('[ffmpeg] load() starting', { classWorkerURL, coreURL, wasmURL });
     const t0 = performance.now();
     try {
@@ -66,13 +79,15 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
     } catch (e) {
       console.error('[ffmpeg] load() failed', e);
       ffmpeg.terminate();
-      loadPromise = null;
+      if (generation === currentGeneration) { loadPromise = null; loadingInstance = null; }
       throw e;
     } finally {
       const dt = Math.round(performance.now() - t0);
       console.info('[ffmpeg] load() finished', { ms: dt });
     }
     onProgress?.({ ratio: 1 });
+    if (generation !== currentGeneration) throw new DOMException('Export cancelled', 'AbortError');
+    loadingInstance = null;
     ffmpegSingleton = ffmpeg;
     return ffmpeg;
   })();

@@ -1,3 +1,4 @@
+import { checkExportCancelled, exportCancelled } from '../../electron/exportCancellation';
 import type { FFmpeg } from '@ffmpeg/ffmpeg';
 import { monotonicProgress, type ExportProgress } from '../../electron/exportProgress';
 
@@ -16,16 +17,23 @@ export async function runWasmExportCommand(ffmpeg: Pick<FFmpeg, 'on' | 'off' | '
   }
 }
 
-export async function withNativeExportProgress(run: (exportId: string) => Promise<Uint8Array>, callback?: ExportProgress) {
+export async function withNativeExportProgress(run: (exportId: string) => Promise<Uint8Array>, callback?: ExportProgress, signal?: AbortSignal) {
+  checkExportCancelled(signal);
   const exportId = crypto.randomUUID();
   const report = monotonicProgress(callback);
   report('Preparing export', 0);
   const unsubscribe = window.electron!.onExportProgress(({ exportId: id, phase, ratio }) => {
-    if (id === exportId) report(phase, Math.min(0.99, ratio));
+    if (id === exportId && !signal?.aborted) report(phase, Math.min(0.99, ratio));
   });
+  const abort = () => { void window.electron!.cancelExport(exportId).catch(() => {}); };
+  signal?.addEventListener('abort', abort, { once: true });
   try {
-    const bytes = await run(exportId);
+    const job = run(exportId);
+    if (signal?.aborted) abort();
+    const bytes = await job;
+    checkExportCancelled(signal);
     report('Export ready', 1);
     return bytes;
-  } finally { unsubscribe(); }
+  } catch (error) { if (signal?.aborted) throw exportCancelled(); throw error; }
+  finally { signal?.removeEventListener('abort', abort); unsubscribe(); }
 }

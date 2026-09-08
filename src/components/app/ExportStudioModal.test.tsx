@@ -46,3 +46,28 @@ it('shows live progress, keeps failure below 100%, and resets correctly for a su
   expect(screen.getByText('Export ready')).toBeTruthy();
   expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
 });
+
+it('cancels without downloading and permits an immediate retry', async () => {
+  URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
+  let signal: AbortSignal | undefined;
+  vi.mocked(exportFilteredSegmentsToMp4).mockImplementation((_input, _segments, _output, opts) => {
+    signal = opts!.signal;
+    opts!.onProgress!('Rendering', 0.4);
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Export cancelled', 'AbortError'))));
+  });
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel export' }));
+  await screen.findByText('Export cancelled');
+  expect(signal?.aborted).toBe(true);
+  expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40');
+  vi.mocked(exportFilteredSegmentsToMp4).mockResolvedValue(new Blob(['ready']));
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  await screen.findByText('Export ready');
+  expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+});
