@@ -126,6 +126,7 @@ export function TimelinePanel() {
       updateSegmentTimes(segId, start, end);
     }
     function onUp() {
+      useProjectStore.getState().endHistoryGroup();
       setResizing(null);
     }
     window.addEventListener('mousemove', onMove);
@@ -173,6 +174,7 @@ export function TimelinePanel() {
         }, 0);
       }
       dragMovedRef.current = false;
+      useProjectStore.getState().endHistoryGroup();
       setDragging(null);
     }
     window.addEventListener('mousemove', onMove);
@@ -299,6 +301,7 @@ export function TimelinePanel() {
                         e.stopPropagation();
                         setScrubbing(false);
                         setDragging(null);
+                        useProjectStore.getState().beginHistoryGroup();
                         setResizing({
                           segId: seg.id,
                           edge: 'start',
@@ -315,6 +318,7 @@ export function TimelinePanel() {
                         e.stopPropagation();
                         setScrubbing(false);
                         setDragging(null);
+                        useProjectStore.getState().beginHistoryGroup();
                         setResizing({
                           segId: seg.id,
                           edge: 'end',
@@ -336,6 +340,7 @@ export function TimelinePanel() {
                         setScrubbing(false);
                         setResizing(null);
                         dragMovedRef.current = false;
+                        useProjectStore.getState().beginHistoryGroup();
                         setDragging({
                           segId: seg.id,
                           originX: e.clientX,

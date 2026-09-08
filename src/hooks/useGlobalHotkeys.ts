@@ -22,7 +22,15 @@ export function useGlobalHotkeys() {
       const project = useProjectStore.getState();
       const video = useVideoStore.getState();
       if (e.defaultPrevented || !project.session.videoSourceUrl) return;
-      if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.altKey || isTypingTarget(e.target)) return;
+      if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'z' || key === 'y') {
+          e.preventDefault();
+          if (key === 'y' || e.shiftKey) project.redo(); else project.undo();
+        }
+        return;
+      }
       if (e.key === ' ') {
         e.preventDefault(); video.setIsPlaying(!video.isPlaying); return;
       }

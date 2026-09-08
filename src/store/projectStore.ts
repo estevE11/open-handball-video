@@ -18,8 +18,19 @@ type SessionState = {
   hydrated: boolean;
 };
 
+type EditSnapshot = Pick<ProjectData, 'segments' | 'mainLabels' | 'secondaryLabels' | 'settings'> & { selectedSegmentId: Id | null; lastCreatedSegmentId: Id | null };
+function snapshot(s: ProjectState): EditSnapshot {
+  return { segments: s.segments, mainLabels: s.mainLabels, secondaryLabels: s.secondaryLabels, settings: s.settings, selectedSegmentId: s.selectedSegmentId, lastCreatedSegmentId: s.lastCreatedSegmentId };
+}
+
 export type ProjectState = ProjectData & {
   session: SessionState;
+  past: EditSnapshot[];
+  future: EditSnapshot[];
+  undo: () => void;
+  redo: () => void;
+  beginHistoryGroup: () => void;
+  endHistoryGroup: () => void;
 
   /** Replace the *session* video URL (does not persist). */
   setVideoSourceUrl: (url: string | null) => void;
@@ -134,9 +145,33 @@ export const useProjectStore = create<ProjectState>()(
   persist(
     (set, get) => {
       const base = createEmptyProject();
+      let grouping = false;
+      let groupRecorded = false;
+      const edit = (update: (state: ProjectState) => Partial<ProjectState>) => {
+        set((state) => {
+          const change = update(state);
+          return { ...change, past: grouping && groupRecorded ? state.past : [...state.past.slice(-99), snapshot(state)], future: [] };
+        });
+        if (grouping) groupRecorded = true;
+      };
 
       return {
         ...base,
+        past: [], future: [],
+        beginHistoryGroup: () => { grouping = true; groupRecorded = false; },
+        endHistoryGroup: () => { grouping = false; groupRecorded = false; },
+        undo: () => {
+          const state = get(); const previous = state.past.at(-1);
+          if (!previous) return;
+          grouping = false; groupRecorded = false;
+          set({ ...previous, past: state.past.slice(0, -1), future: [...state.future, snapshot(state)], updatedAtMs: nowMs() });
+        },
+        redo: () => {
+          const state = get(); const next = state.future.at(-1);
+          if (!next) return;
+          grouping = false; groupRecorded = false;
+          set({ ...next, past: [...state.past, snapshot(state)], future: state.future.slice(0, -1), updatedAtMs: nowMs() });
+        },
         lastCreatedSegmentId: null,
         selectedSegmentId: null,
         session: { videoSourceUrl: null, videoFile: null, clipSources: [], hydrated: false },
@@ -205,7 +240,7 @@ export const useProjectStore = create<ProjectState>()(
             postRollSec: Math.max(0, label.postRollSec),
           };
 
-          set((s) => {
+          edit((s) => {
             const idx = s.mainLabels.findIndex((l) => l.id === normalized.id);
             const next = [...s.mainLabels];
             if (idx >= 0) next[idx] = normalized;
@@ -215,7 +250,7 @@ export const useProjectStore = create<ProjectState>()(
         },
 
         deleteMainLabel: (id) => {
-          set((s) => ({
+          edit((s) => ({
             mainLabels: s.mainLabels.filter((l) => l.id !== id),
             segments: s.segments.filter((seg) => seg.mainLabelId !== id),
             updatedAtMs: nowMs(),
@@ -228,7 +263,7 @@ export const useProjectStore = create<ProjectState>()(
             ...(label.hotkey ? { hotkey: normalizeHotkey(label.hotkey) } : {}),
           };
 
-          set((s) => {
+          edit((s) => {
             const idx = s.secondaryLabels.findIndex((l) => l.id === normalized.id);
             const next = [...s.secondaryLabels];
             if (idx >= 0) next[idx] = normalized;
@@ -238,7 +273,7 @@ export const useProjectStore = create<ProjectState>()(
         },
 
         deleteSecondaryLabel: (id) => {
-          set((s) => ({
+          edit((s) => ({
             secondaryLabels: s.secondaryLabels.filter((l) => l.id !== id),
             segments: s.segments.map((seg) => ({
               ...seg,
@@ -268,7 +303,7 @@ export const useProjectStore = create<ProjectState>()(
             createdAtMs: nowMs(),
           };
 
-          set((s) => ({
+          edit((s) => ({
             segments: [...s.segments, segment],
             lastCreatedSegmentId: segment.id,
             selectedSegmentId: segment.id,
@@ -281,7 +316,7 @@ export const useProjectStore = create<ProjectState>()(
         toggleSecondaryOnSelectedSegment: (secondaryLabelId) => {
           const segId = get().selectedSegmentId || get().lastCreatedSegmentId;
           if (!segId) return;
-          set((s) => ({
+          edit((s) => ({
             segments: s.segments.map((seg) => {
               if (seg.id !== segId) return seg;
               const hasTag = seg.secondaryLabelIds.includes(secondaryLabelId);
@@ -295,14 +330,14 @@ export const useProjectStore = create<ProjectState>()(
         },
 
         renameSegment: (segmentId, name) => {
-          set((s) => ({
+          edit((s) => ({
             segments: s.segments.map((seg) => (seg.id === segmentId ? { ...seg, name: name.trim() || undefined } : seg)),
             updatedAtMs: nowMs(),
           }));
         },
 
         deleteSegment: (segmentId) => {
-          set((s) => ({
+          edit((s) => ({
             segments: s.segments.filter((seg) => seg.id !== segmentId),
             lastCreatedSegmentId: s.lastCreatedSegmentId === segmentId ? null : s.lastCreatedSegmentId,
             selectedSegmentId: s.selectedSegmentId === segmentId ? null : s.selectedSegmentId,
@@ -313,7 +348,7 @@ export const useProjectStore = create<ProjectState>()(
         updateSegmentTimes: (segmentId, startTimeSec, endTimeSec) => {
           const start = Math.max(0, startTimeSec);
           const end = Math.max(start + 0.02, endTimeSec);
-          set((s) => ({
+          edit((s) => ({
             segments: s.segments.map((seg) => (seg.id === segmentId ? { ...seg, startTimeSec: start, endTimeSec: end } : seg)),
             updatedAtMs: nowMs(),
           }));
@@ -326,12 +361,14 @@ export const useProjectStore = create<ProjectState>()(
 
         replaceProject: (raw) => {
           const data = coerceProjectData(raw);
+          grouping = false; groupRecorded = false;
 
           set((s) => ({
             ...s,
             clips: undefined,
             electronProjectKey: undefined,
             ...data,
+            past: [], future: [],
             updatedAtMs: nowMs(),
             selectedSegmentId: null,
             lastCreatedSegmentId: null,
@@ -341,6 +378,7 @@ export const useProjectStore = create<ProjectState>()(
         },
 
         resetProject: () => {
+          grouping = false; groupRecorded = false;
           get().clearVideoSourceUrl();
 
           // Clear persisted storage.
@@ -353,6 +391,7 @@ export const useProjectStore = create<ProjectState>()(
           const next = createEmptyProject();
           set(() => ({
             ...next,
+            past: [], future: [],
             clips: undefined,
             electronProjectKey: undefined,
             lastCreatedSegmentId: null,
@@ -362,7 +401,7 @@ export const useProjectStore = create<ProjectState>()(
         },
 
         updateSettings: (partial) => {
-          set((s) => ({
+          edit((s) => ({
             settings: { ...s.settings, ...partial },
             updatedAtMs: nowMs(),
           }));

@@ -1,4 +1,4 @@
-import { ChevronLeft, Download, Settings, Upload } from 'lucide-react';
+import { Undo2, Redo2, ChevronLeft, Download, Settings, Upload } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ type TopBarProps = {
 
 export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }: TopBarProps) {
 
+  const canUndo = useProjectStore((s) => s.past.length > 0);
+  const canRedo = useProjectStore((s) => s.future.length > 0);
   const exportProjectJson = useProjectStore((s) => s.exportProjectJson);
   const resetProject = useProjectStore((s) => s.resetProject);
   const updatedAtMs = useProjectStore((s) => s.updatedAtMs);
@@ -53,6 +55,8 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <Button variant="ghost" size="icon" aria-label="Undo edit" title="Undo (Ctrl/Cmd+Z)" disabled={!canUndo} onClick={() => useProjectStore.getState().undo()}><Undo2 className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Redo edit" title="Redo (Ctrl/Cmd+Shift+Z)" disabled={!canRedo} onClick={() => useProjectStore.getState().redo()}><Redo2 className="h-4 w-4" /></Button>
         {!window.electron && (
           <>
             <Button
