@@ -6,6 +6,7 @@ export type StoredProject = {
   json: string;
   name: string;
   updatedAtMs: number;
+  lastOpenedAtMs?: number;
   videoBytes: number;
   jsonBytes: number;
 };
@@ -107,6 +108,7 @@ export async function saveBrowserProject(data: ProjectData, file?: File | File[]
       id: data.projectId, json,
       name: data.clips && data.clips.length > 1 ? `${data.clips[0].fileName} (+${data.clips.length - 1} clips)` : data.videoMeta?.fileName ?? 'Untitled project',
       updatedAtMs: data.updatedAtMs,
+      lastOpenedAtMs: old?.lastOpenedAtMs,
       videoBytes: videoBytes ?? old?.videoBytes ?? 0,
       jsonBytes: new Blob([json]).size,
     };
@@ -115,6 +117,26 @@ export async function saveBrowserProject(data: ProjectData, file?: File | File[]
   };
   await done;
   window.dispatchEvent(new Event('ohv-storage-changed'));
+}
+
+/** Opening is tracked separately from edits, imports, and background saves. */
+export async function markBrowserProjectOpened(id: string, openedAtMs = Date.now()) {
+  const db = await openDatabase();
+  const tx = db.transaction('projects', 'readwrite');
+  const done = completed(tx);
+  const projects = tx.objectStore('projects');
+  const request = projects.get(id);
+  request.onsuccess = () => {
+    const project = request.result as StoredProject | undefined;
+    if (!project) { tx.abort(); return; }
+    projects.put({ ...project, lastOpenedAtMs: openedAtMs });
+  };
+  await done;
+}
+
+export function recommendSoftDelete(project: StoredProject, now = Date.now()) {
+  return project.videoBytes > 0 && typeof project.lastOpenedAtMs === 'number'
+    && now - project.lastOpenedAtMs >= 30 * 24 * 60 * 60 * 1000;
 }
 
 /** Release video storage without changing the project's JSON or original video metadata. */

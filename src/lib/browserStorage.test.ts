@@ -227,3 +227,25 @@ it('persists, removes, and restores all ordered clips together without affecting
   await expect(saveBrowserProject(data, [files[0]])).rejects.toThrow('all project clips');
   expect((await loadBrowserProject(data.projectId)).files).toHaveLength(2);
 });
+
+it('recommends soft deletion by last open date, never by autosave date, and keeps JSON unchanged', async () => {
+  const { markBrowserProjectOpened, recommendSoftDelete } = await import('@/lib/browserStorage');
+  const data = createEmptyProject();
+  data.videoMeta = { fileName: 'old.mp4', fileType: 'video/mp4', fileSize: 5, lastModified: 1 };
+  await saveBrowserProject(data, new File(['video'], 'old.mp4'));
+  const original = (await listBrowserProjects()).find((project) => project.id === data.projectId)!;
+  const now = Date.now();
+  expect(recommendSoftDelete(original, now + 60 * 86400000)).toBe(false);
+  await markBrowserProjectOpened(data.projectId, now - 30 * 86400000);
+  await saveBrowserProject({ ...data, updatedAtMs: now });
+  const old = (await listBrowserProjects()).find((project) => project.id === data.projectId)!;
+  expect(recommendSoftDelete(old, now - 1)).toBe(false);
+  expect(recommendSoftDelete(old, now)).toBe(true);
+  const json = old.json;
+  await markBrowserProjectOpened(data.projectId, now);
+  const opened = (await listBrowserProjects()).find((project) => project.id === data.projectId)!;
+  expect(opened.json).toBe(json);
+  expect(recommendSoftDelete(opened, now)).toBe(false);
+  await removeBrowserProjectVideo(data.projectId);
+  expect(recommendSoftDelete((await listBrowserProjects()).find((project) => project.id === data.projectId)!, now + 40 * 86400000)).toBe(false);
+});

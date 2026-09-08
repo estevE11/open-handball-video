@@ -9,7 +9,7 @@ import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
 import { coerceProjectData, downloadProjectJson, readJsonFile } from '@/lib/projectIo';
 import { openBrowserProject } from '@/lib/browserProjectSession';
-import { deleteBrowserProject, formatBytes, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, requestPersistentStorage, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
+import { deleteBrowserProject, markBrowserProjectOpened, recommendSoftDelete, formatBytes, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, requestPersistentStorage, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
 
 export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
   const [projects, setProjects] = useState<StoredProject[]>([]);
@@ -60,6 +60,7 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
         data.videoMeta = { fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: file.lastModified };
         await saveBrowserProject(data, file);
         void requestPersistentStorage();
+        await markBrowserProjectOpened(data.projectId);
         openBrowserProject(data, file); onOpen();
       });
     }} />
@@ -83,10 +84,13 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
         <CardHeader><CardTitle className="truncate text-base" title={project.name}>{project.name}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">{formatBytes(project.videoBytes + project.jsonBytes)} · {new Date(project.updatedAtMs).toLocaleDateString()}</p>
+          <p className="text-xs text-muted-foreground">Last opened: {project.lastOpenedAtMs ? new Date(project.lastOpenedAtMs).toLocaleDateString() : 'Not yet recorded'}</p>
+          {recommendSoftDelete(project) && <p className="rounded border border-amber-500/40 p-2 text-sm" role="note">Recommended to soft-delete: not opened for 30 days. Remove the videos to free space while keeping all project data.</p>}
           {!project.videoBytes && <p className="text-sm text-muted-foreground">Video not stored. Project data kept. Choose the original video when opening this project.</p>}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void run(async () => {
               const { data, files } = await loadBrowserProject(project.id);
+              await markBrowserProjectOpened(data.projectId);
               openBrowserProject(data, files.length ? files : undefined); onOpen();
             })}>Open project</Button>
             <Button disabled={busy} variant="outline" onClick={() => downloadProjectJson(coerceProjectData(JSON.parse(project.json)), `${project.name}.json`)}>Export JSON</Button>
@@ -94,7 +98,7 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
               if (window.confirm(`Remove the stored video clips for “${project.name}” to free ${formatBytes(project.videoBytes)}? All labels, segments, and settings will be kept. Keep your original video files to attach them again later.`)) {
                 void run(async () => { await removeBrowserProjectVideo(project.id); await refresh(); });
               }
-            }}>Remove video</Button>}
+            }}>{recommendSoftDelete(project) ? 'Soft-delete videos' : 'Remove video'}</Button>}
             <Button disabled={busy} variant="ghost" onClick={() => {
               if (window.confirm(`Delete “${project.name}” and its stored video from this browser?`)) {
                 void run(async () => { await deleteBrowserProject(project.id); await refresh(); });
@@ -118,6 +122,7 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
         const files = pendingClips.map((item) => item.file);
         await saveBrowserProject(data, files);
         void requestPersistentStorage();
+        await markBrowserProjectOpened(data.projectId);
         openBrowserProject(data, files); onOpen();
       })} />}
   </div>;
