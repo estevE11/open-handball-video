@@ -323,3 +323,32 @@ it('seeks five seconds, steps individual frames in both directions, and selects 
   fireEvent.keyUp(window, { key: 'j' });
   expect(video.playbackRate).toBe(3);
 });
+
+it.each([{ mainLabels: null }, { segments: [null] }, { settings: { fps: 0 } }, null])('rejects invalid project replacement without mutating state: %j', (invalid) => {
+  const state = useProjectStore.getState();
+  const raw = invalid === null ? null : { ...JSON.parse(state.exportProjectJson()), ...invalid };
+  expect(() => state.replaceProject(raw)).toThrow();
+  expect(useProjectStore.getState()).toBe(state);
+});
+
+it.each(['malformed', 'unreadable'])('keeps the Electron library recoverable after a %s saved project', async (failure) => {
+  const video = { name: 'bad.mp4', path: '/videos/bad.mp4', url: 'file:///videos/bad.mp4', size: 10, modifiedAt: 1, createdAt: 1 };
+  const state = useProjectStore.getState();
+  const invalid = { ...JSON.parse(state.exportProjectJson()), mainLabels: null };
+  window.electron = {
+    getVideos: async () => [video], getClipProjects: async () => [],
+    loadProject: vi.fn(async () => { if (failure === 'unreadable') throw new Error('Could not read saved project'); return invalid; }),
+    saveProject: vi.fn(async () => true), readFile: vi.fn(), runNativeExport: vi.fn(), runNativeClipExport: vi.fn(),
+  };
+  try {
+    render(<App />);
+    fireEvent.click(await screen.findByText('bad.mp4'));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Invalid project|Could not read saved project/);
+    expect(useProjectStore.getState()).toBe(state);
+    expect(window.electron.saveProject).not.toHaveBeenCalled();
+    // A subsequent valid load works without restarting the app.
+    vi.mocked(window.electron.loadProject).mockResolvedValue(JSON.parse(state.exportProjectJson()));
+    fireEvent.click(screen.getByText('bad.mp4'));
+    await screen.findByRole('button', { name: 'Back to projects' });
+  } finally { cleanup(); delete window.electron; }
+});

@@ -8,7 +8,7 @@ export interface ElectronAPI {
   }) => Promise<Uint8Array>;
   getClipProjects: () => Promise<ProjectData[]>;
   getVideos: () => Promise<VideoFile[]>;
-  loadProject: (videoFileName: string) => Promise<ProjectData | null>;
+  loadProject: (videoFileName: string) => Promise<unknown>;
   saveProject: (videoFileName: string, projectData: ProjectData) => Promise<boolean>;
   readFile: (filePath: string) => Promise<Uint8Array>;
   runNativeExport: (opts: {

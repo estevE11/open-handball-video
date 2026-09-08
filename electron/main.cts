@@ -129,8 +129,8 @@ ipcMain.handle('load-project', async (_event, videoFileName) => {
     return null;
   } catch (error) {
     console.error(`Error loading project for ${videoFileName}:`, error);
-    // Return null instead of throwing, so the UI can just start a fresh project
-    return null;
+    // An unreadable save must never be mistaken for a new project and overwritten.
+    throw new Error(`Could not read saved project for ${videoFileName}. Check its JSON file before retrying.`);
   }
 });
 

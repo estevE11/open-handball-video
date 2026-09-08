@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { Id, MainLabel, ProjectData, SecondaryLabel, Segment, VideoMeta } from '@/types/project';
+import { coerceProjectData } from '@/lib/projectIo';
 import { createId } from '@/lib/ids';
 import { PROJECT_SCHEMA_VERSION, createEmptyProject } from '@/lib/projectDefaults';
 
@@ -46,7 +47,7 @@ export type ProjectState = ProjectData & {
   /** Export *persisted* project data as a stable JSON string. */
   exportProjectJson: () => string;
   /** Import/replace project data (used for "Load Project"). */
-  replaceProject: (data: ProjectData) => void;
+  replaceProject: (data: unknown) => void;
   /** Start fresh and clear persisted data. */
   resetProject: () => void;
 
@@ -323,11 +324,8 @@ export const useProjectStore = create<ProjectState>()(
           return JSON.stringify(pickProjectData(state), null, 2);
         },
 
-        replaceProject: (data) => {
-          if (data.schemaVersion !== PROJECT_SCHEMA_VERSION) {
-            // For now, only v1 is supported. (We’ll add migrations when schema evolves.)
-            throw new Error(`Unsupported project schemaVersion: ${String(data.schemaVersion)}`);
-          }
+        replaceProject: (raw) => {
+          const data = coerceProjectData(raw);
 
           set((s) => ({
             ...s,

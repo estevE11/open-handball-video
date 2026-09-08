@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ClipOrderDialog } from '@/components/app/ClipOrderDialog';
+import { coerceProjectData } from '@/lib/projectIo';
 import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
 import { readVideoDuration, withProjectClips } from '@/lib/clipTimeline';
@@ -46,30 +47,19 @@ export function Dashboard() {
   const handleSelectVideo = async (video: VideoFile) => {
     if (!window.electron) return;
 
-    // Load saved project state if it exists
-    const savedData = await window.electron.loadProject(video.name);
-    
+    // Validate before clearing state or enabling autosave for this video.
+    const raw = await window.electron.loadProject(video.name);
+    const savedData = raw === null ? null : coerceProjectData(raw);
     useProjectStore.getState().resetProject();
     useVideoStore.getState().reset();
-
-    // Set video in store (this sets videoSourceUrl to file://...)
+    if (savedData) replaceProject(savedData);
     setElectronVideo(video.url, {
+      ...savedData?.videoMeta,
       fileName: video.name,
       fileSize: video.size,
-      fileType: 'video/mp4', // Generic fallback
+      fileType: savedData?.videoMeta?.fileType || 'video/mp4',
       lastModified: video.modifiedAt,
-      // Duration will be updated by the video player once loaded
     });
-
-    if (savedData) {
-      console.log('Restoring project state for', video.name);
-      replaceProject(savedData);
-    } else {
-      console.log('Starting fresh project for', video.name);
-      // Ensure we don't have leftover state from previous project
-      // (The store reset might be needed, but replaceProject overwrites most things. 
-      //  To be safe, we could reset first, but setElectronVideo sets session.)
-    }
   };
 
   return (

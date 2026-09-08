@@ -1,3 +1,4 @@
+import { coerceProjectData } from '@/lib/projectIo';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
 import { saveBrowserProject } from '@/lib/browserStorage';
@@ -8,7 +9,8 @@ export function currentProject(): ProjectData {
   return JSON.parse(useProjectStore.getState().exportProjectJson()) as ProjectData;
 }
 
-export function openBrowserProject(data: ProjectData, file?: File | File[]) {
+export function openBrowserProject(raw: ProjectData, file?: File | File[]) {
+  const data = coerceProjectData(raw);
   const state = useProjectStore.getState();
   state.resetProject();
   state.replaceProject(data);
