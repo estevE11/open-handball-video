@@ -245,7 +245,7 @@ export function VideoPanel() {
 
             <Select
               value={String(playbackRate)}
-              onValueChange={(v) => setPlaybackRate((Number(v) as 0.5 | 1 | 2 | 3) ?? 1)}
+              onValueChange={(v) => setPlaybackRate((Number(v) as 0.5 | 1 | 2 | 2.5 | 3) ?? 1)}
               disabled={!videoSourceUrl}
             >
               <SelectTrigger aria-label="Playback speed" className="h-8 w-[110px]">
@@ -255,6 +255,7 @@ export function VideoPanel() {
                 <SelectItem value="0.5">0.5×</SelectItem>
                 <SelectItem value="1">1×</SelectItem>
                 <SelectItem value="2">2×</SelectItem>
+                <SelectItem value="2.5">2.5×</SelectItem>
                 <SelectItem value="3">3×</SelectItem>
               </SelectContent>
             </Select>

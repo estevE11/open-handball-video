@@ -317,4 +317,9 @@ it('seeks five seconds, steps individual frames in both directions, and selects 
   fireEvent.keyDown(screen.getByRole('combobox', { name: 'Playback speed' }), { key: 'ArrowDown' });
   fireEvent.click(await screen.findByRole('option', { name: '3×' }));
   expect(video.playbackRate).toBe(3);
+  fireEvent.keyDown(window, { key: 'j' });
+  expect(video.playbackRate).toBe(1);
+  fireEvent.keyDown(window, { key: 'j', repeat: true });
+  fireEvent.keyUp(window, { key: 'j' });
+  expect(video.playbackRate).toBe(3);
 });

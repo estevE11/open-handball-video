@@ -13,6 +13,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 export function useGlobalHotkeys() {
   useEffect(() => {
+    let heldRate: ReturnType<typeof useVideoStore.getState>['playbackRate'] | null = null;
+    function releaseTemporarySpeed() {
+      if (heldRate !== null) { useVideoStore.getState().setPlaybackRate(heldRate); heldRate = null; }
+    }
+    function onKeyUp(event: KeyboardEvent) { if (event.key.toUpperCase() === 'J') releaseTemporarySpeed(); }
     function onKeyDown(e: KeyboardEvent) {
       const project = useProjectStore.getState();
       const video = useVideoStore.getState();
@@ -28,12 +33,24 @@ export function useGlobalHotkeys() {
         e.preventDefault(); stepVideoFrame(e.key === ',' ? -1 : 1); return;
       }
       const key = e.key.toUpperCase();
+      if (key === 'J') {
+        e.preventDefault();
+        if (heldRate === null) { heldRate = video.playbackRate; video.setPlaybackRate(1); }
+        return;
+      }
       const main = project.mainLabels.find((label) => label.hotkey.toUpperCase() === key);
       if (main) { e.preventDefault(); project.createSegmentFromTrigger(main.id, video.currentTimeSec); return; }
       const secondary = project.secondaryLabels.find((label) => label.hotkey?.toUpperCase() === key);
       if (secondary) { e.preventDefault(); project.toggleSecondaryOnSelectedSegment(secondary.id); }
     }
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', releaseTemporarySpeed);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', releaseTemporarySpeed);
+      releaseTemporarySpeed();
+    };
   }, []);
 }
