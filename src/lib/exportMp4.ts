@@ -157,7 +157,16 @@ export async function exportFilteredSegmentsToMp4(
       onProgress('ffmpeg:create-gap', 0);
       console.info('[export] creating 0.5s black gap clip');
       await safeDelete(ffmpeg, gapName);
-      // Take a small bit from the beginning and make it black/silent
+      const probeName = `audio-probe_${Date.now()}.json`;
+      temporaryFiles.add(probeName);
+      await safeDelete(ffmpeg, probeName);
+      // Validate fresh output: this WASM core's ffprobe can report -1 on success.
+      await ffmpeg.ffprobe(['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', inputName, '-o', probeName]);
+      const probe = JSON.parse(new TextDecoder().decode(await ffmpeg.readFile(probeName) as Uint8Array)) as {
+        streams: { codec_type: string }[];
+      };
+      const hasAudio = probe.streams.some((stream) => stream.codec_type === 'audio');
+      // Preserve video-only sources; only mute an audio stream when one exists.
       await runFFmpeg([
         '-hide_banner',
         '-y',
@@ -165,7 +174,7 @@ export async function exportFilteredSegmentsToMp4(
         '-t', '0.5',
         '-i', inputName,
         '-vf', 'drawbox=t=fill:c=black',
-        '-af', 'volume=0',
+        ...(hasAudio ? ['-af', 'volume=0'] : ['-an']),
         '-c:v', 'libx264',
         '-preset', 'veryfast',
         '-c:a', 'aac',

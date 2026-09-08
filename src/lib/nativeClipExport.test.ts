@@ -70,7 +70,23 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
       await fs.writeFile(singleOutput, new Uint8Array(await single.arrayBuffer()));
       await expectTitleBands(singleOutput);
 
-      expect(core.FS.readdir('/').filter((name) => /^(sequence-|part_|gap|concat|export)/.test(name))).toEqual([]);
+      for (const addGap of [false, true]) {
+        const silent = await exportFilteredSegmentsToMp4(files[1], [
+          { id: 'silent-a', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0, endTimeSec: 0.75, secondaryLabelIds: [], createdAtMs: 0 },
+          { id: 'silent-b', mainLabelId: 'attack', startTimeSec: 1, endTimeSec: 1.75, secondaryLabelIds: [], createdAtMs: 0 },
+        ], 'silent-export.mp4', { addGap, mainLabels: [{ id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 }] });
+        const silentOutput = path.join(directory, 'silent-export.mp4');
+        await fs.writeFile(silentOutput, new Uint8Array(await silent.arrayBuffer()));
+        const info = JSON.parse((await run(ffprobePath, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', silentOutput])).stdout);
+        expect(Number(info.format.duration)).toBeCloseTo(addGap ? 2 : 1.5, 1);
+        expect(info.streams.map((stream: { codec_type: string }) => stream.codec_type)).toEqual(['video']);
+        await expectTitleBands(silentOutput);
+        if (addGap) {
+          const frame = await run(ffmpegPath, ['-v', 'error', '-ss', '1', '-i', silentOutput, '-frames:v', '1', '-vf', 'crop=2:2:200:180,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { encoding: 'buffer' });
+          expect(frame.stdout[0] + frame.stdout[1] + frame.stdout[2]).toBeLessThan(30);
+        }
+      }
+      expect(core.FS.readdir('/').filter((name) => /^(sequence-|part_|gap|concat|export|audio-probe|silent-export)/.test(name))).toEqual([]);
     }
     const output = path.join(directory, 'export.mp4'); await fs.writeFile(output, bytes);
     await expectTitleBands(output);
