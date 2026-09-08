@@ -1,3 +1,4 @@
+import { monotonicProgress } from './exportProgress.js';
 /** Shared by the native and WebAssembly exporters. No browser or Node dependencies. */
 export type ExportPiece = {
   sourceIndex: number;
@@ -12,7 +13,7 @@ export type ClipExportBackend = {
   loadSource: (index: number) => Promise<string>;
   releaseSource: (name: string) => Promise<void>;
   probe: (name: string) => Promise<MediaInfo>;
-  exec: (args: string[]) => Promise<void>;
+  exec: (args: string[], onTime?: (seconds: number) => void) => Promise<void>;
   write: (name: string, data: Uint8Array) => Promise<void>;
   read: (name: string) => Promise<Uint8Array>;
   remove: (name: string) => Promise<void>;
@@ -26,11 +27,14 @@ function escapeText(text: string) {
 export async function renderClipExport(backend: ClipExportBackend, pieces: ExportPiece[], addGap: boolean,
   onProgress: (phase: string, ratio: number) => void = () => {}) {
   if (!pieces.length) throw new Error('No segments to export.');
+  onProgress = monotonicProgress(onProgress);
+  onProgress('Preparing clips', 0.08);
+  const totalDuration = pieces.reduce((sum, piece) => sum + piece.endTimeSec - piece.startTimeSec, 0);
   const files = new Set<string>();
   let loaded: string | undefined;
   const outputs = pieces.map((_, index) => `part_${index}.mp4`);
   let dimensions: { width: number; height: number } | undefined;
-  let rendered = 0;
+  let renderedDuration = 0;
   const encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
     '-r', '30', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '128k'];
   try {
@@ -52,16 +56,20 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
         if (piece.secondaryText) filter += `,drawtext=fontfile=${backend.fontName}:expansion=none:text='${escapeText(piece.secondaryText)}':x=30:y=85:fontsize=22:fontcolor=white`;
         args.push('-t', duration.toFixed(6), '-map', '0:v:0', '-map', info.hasAudio ? '0:a:0' : '1:a:0',
           '-vf', filter, '-af', 'apad', ...encode, outputs[index]);
-        await backend.exec(args);
-        onProgress('Rendering tagged clips', ++rendered / pieces.length * 0.9);
+        const phase = `Rendering clip ${index + 1} of ${pieces.length}`;
+        onProgress(phase, 0.1 + renderedDuration / totalDuration * 0.75);
+        await backend.exec(args, (seconds) => onProgress(phase, 0.1 + (renderedDuration + Math.min(duration, seconds)) / totalDuration * 0.75));
+        renderedDuration += duration;
+        onProgress(phase, 0.1 + renderedDuration / totalDuration * 0.75);
       }
       await backend.releaseSource(loaded); loaded = undefined;
     }
     const concat: string[] = [];
     if (addGap && pieces.some((piece, index) => index > 0 && piece.segmentIndex !== pieces[index - 1].segmentIndex)) {
+      onProgress('Rendering gaps', 0.85);
       files.add('gap.mp4');
       await backend.exec(['-hide_banner', '-y', '-f', 'lavfi', '-i', `color=c=black:s=${dimensions!.width}x${dimensions!.height}:r=30`,
-        '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '0.5', ...encode, 'gap.mp4']);
+        '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '0.5', ...encode, 'gap.mp4'], (seconds) => onProgress('Rendering gaps', 0.85 + Math.min(1, seconds / 0.5) * 0.03));
     }
     pieces.forEach((piece, index) => {
       if (addGap && index > 0 && piece.segmentIndex !== pieces[index - 1].segmentIndex) concat.push("file 'gap.mp4'");
@@ -69,10 +77,11 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
     });
     files.add('concat.txt'); files.add('export.mp4');
     await backend.write('concat.txt', new TextEncoder().encode(concat.join('\n')));
-    onProgress('Merging tagged clips', 0.95);
-    await backend.exec(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-movflags', '+faststart', 'export.mp4']);
+    const outputDuration = totalDuration + (concat.length - pieces.length) * 0.5;
+    onProgress('Merging tagged clips', 0.88);
+    await backend.exec(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-movflags', '+faststart', 'export.mp4'], (seconds) => onProgress('Merging tagged clips', 0.88 + Math.min(1, seconds / outputDuration) * 0.1));
+    onProgress('Preparing download', 0.99);
     const data = await backend.read('export.mp4');
-    onProgress('Complete', 1);
     return data;
   } finally {
     if (loaded) await backend.releaseSource(loaded).catch(() => {});

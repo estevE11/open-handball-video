@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 
 const ffmpeg = vi.hoisted(() => ({
-  writeFile: vi.fn(), deleteFile: vi.fn().mockResolvedValue(true), exec: vi.fn().mockResolvedValue(0),
+  on: vi.fn(), off: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn().mockResolvedValue(true), exec: vi.fn().mockResolvedValue(0),
   readFile: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
 }));
 vi.mock('@/lib/ffmpegSingleton', () => ({ getFFmpeg: async () => ffmpeg }));
@@ -39,12 +39,12 @@ it('renders an individual title large and its unchanged tag type small', async (
 });
 
 it('uses native export bytes directly without leaving an intermediate beside the source', async () => {
-  const electron = { runNativeExport: vi.fn(async () => new Uint8Array([4, 5, 6])), readFile: vi.fn() };
+  const electron = { onExportProgress: vi.fn(() => () => {}), runNativeExport: vi.fn(async () => new Uint8Array([4, 5, 6])), readFile: vi.fn() };
   Object.assign(window, { electron });
   try {
     const blob = await exportFilteredSegmentsToMp4('file:///videos/match.mp4', segments);
     expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([4, 5, 6]);
-    expect(electron.runNativeExport).toHaveBeenCalledWith({ inputPath: '/videos/match.mp4', segments, addGap: false, mainLabels: [] });
+    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: '/videos/match.mp4', segments, addGap: false, mainLabels: [] });
     expect(electron.readFile).not.toHaveBeenCalled();
   } finally { delete window.electron; }
 });

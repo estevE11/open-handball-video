@@ -218,6 +218,7 @@ it('creates and reopens an Electron split match using its own save key', async (
   const videos = ['first.mp4', 'second.mp4'].map((name) => ({ name, path: `/videos/${name}`, url: `file:///videos/${name}`, size: 10, modifiedAt: 1, createdAt: 1 }));
   const saved: import('@/types/project').ProjectData[] = [];
   window.electron = {
+    onExportProgress: vi.fn(() => () => {}),
     getVideos: async () => videos, getClipProjects: async () => saved,
     loadProject: vi.fn(async () => null),
     saveProject: vi.fn(async (key, data) => { expect(key).toBe(data.projectId); saved.splice(0, saved.length, data); return true; }),
@@ -336,6 +337,7 @@ it.each(['malformed', 'unreadable'])('keeps the Electron library recoverable aft
   const state = useProjectStore.getState();
   const invalid = { ...JSON.parse(state.exportProjectJson()), mainLabels: null };
   window.electron = {
+    onExportProgress: vi.fn(() => () => {}),
     getVideos: async () => [video], getClipProjects: async () => [],
     loadProject: vi.fn(async () => { if (failure === 'unreadable') throw new Error('Could not read saved project'); return invalid; }),
     saveProject: vi.fn(async () => true), readFile: vi.fn(), runNativeExport: vi.fn(), runNativeClipExport: vi.fn(),

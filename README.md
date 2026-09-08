@@ -48,6 +48,8 @@ In Electron, put the originals in `Documents/open-handball-video`, select **Incl
 
 Export Studio cuts the selected tag ranges from the relevant sources, including tags spanning clip boundaries, and merges only those tagged pieces. Split-match exports normalize video to 30 fps and the first used clip's dimensions, and audio to stereo 48 kHz (silence for clips without audio). Optional black gaps occur between tags, never in the middle of a tag spanning two sources. The browser exporter loads one original at a time into FFmpeg memory; large clips can still exceed browser memory limits. Export never modifies the originals.
 
+Export Studio shows a live progress bar for browser and Electron exports. Rendering progress uses encoded video time and is weighted by tagged duration; it never moves backward between stages or retries. Loading and download preparation have status labels and an activity indicator. The bar reaches 100% only when the exported file is ready, and failures retain the last percentage so a retry can start cleanly.
+
 Validation includes UI ordering/seek/playback/save/restore tests, IndexedDB rollback and removal tests, and real native and WebAssembly renders using clips with different dimensions, frame rates, and audio presence. Those render tests inspect the resulting media streams and decoded pixels to verify source order and gap placement.
 
 ## Vercel

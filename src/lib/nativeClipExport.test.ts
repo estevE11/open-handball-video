@@ -10,7 +10,7 @@ import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { fileMeta } from '@/lib/clipTimeline';
 
-const adapter = vi.hoisted(() => ({ writeFile: vi.fn(), deleteFile: vi.fn(), readFile: vi.fn(), exec: vi.fn(), ffprobe: vi.fn() }));
+const adapter = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn(), readFile: vi.fn(), exec: vi.fn(), ffprobe: vi.fn() }));
 vi.mock('@/lib/ffmpegSingleton', () => ({ getFFmpeg: async () => adapter }));
 import { nativeClipExport } from '../../electron/nativeClipExport';
 
@@ -26,24 +26,30 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
     await run(ffmpegPath, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=320x240:r=25', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100', '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', red]);
     await run(ffmpegPath, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=640x360:r=60', '-t', '2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', blue]);
     let bytes: Uint8Array;
+    const progress: number[] = [];
     if (mode === 'native') bytes = await nativeClipExport({ inputPaths: [red, blue], addGap: true, pieces: [
       { sourceIndex: 0, startTimeSec: 1, endTimeSec: 2, segmentIndex: 0, primaryText: '3:2:1', secondaryText: 'Attack' },
       { sourceIndex: 1, startTimeSec: 0, endTimeSec: 1, segmentIndex: 0, primaryText: '3:2:1', secondaryText: 'Attack' },
       { sourceIndex: 1, startTimeSec: 1, endTimeSec: 1.5, segmentIndex: 1, primaryText: 'Defense' },
-    ] }, { ffmpegPath, ffprobePath, fontPath: path.resolve('public/fonts/Roboto-Bold.ttf') });
+    ] }, { ffmpegPath, ffprobePath, fontPath: path.resolve('public/fonts/Roboto-Bold.ttf') }, (_, ratio) => progress.push(ratio));
     else {
       vi.stubGlobal('self', { location: { href: 'http://localhost/ffmpeg-core.js' } });
       type Core = {
         FS: { writeFile: (name: string, data: Uint8Array) => void; readFile: (name: string) => Uint8Array; unlink: (name: string) => void; readdir: (name: string) => string[] };
+        setProgress: (callback: (event: { time: number; progress: number }) => void) => void;
         setLogger: (callback: (entry: { message: string }) => void) => void;
         exec: (...args: string[]) => void; ffprobe: (...args: string[]) => void; ret: number; reset: () => void;
       };
       const core: Core = await require('@ffmpeg/core')({ wasmBinary: await fs.readFile(require.resolve('@ffmpeg/core/wasm')) });
       core.setLogger(() => {});
+      const progressListeners = new Set<(event: { time: number; progress: number }) => void>();
+      adapter.on.mockImplementation((_event, callback) => progressListeners.add(callback));
+      adapter.off.mockImplementation((_event, callback) => progressListeners.delete(callback));
+      core.setProgress((event) => progressListeners.forEach((callback) => callback(event)));
       adapter.writeFile.mockImplementation(async (name: string, data: Uint8Array) => core.FS.writeFile(name, data));
       adapter.readFile.mockImplementation(async (name: string) => core.FS.readFile(name));
       adapter.deleteFile.mockImplementation(async (name: string) => core.FS.unlink(name));
-      adapter.exec.mockImplementation(async (args: string[]) => { core.exec(...args); const code = core.ret; core.reset(); return code; });
+      adapter.exec.mockImplementation(async (args: string[]) => { core.exec('-stats_period', '0.01', ...args); const code = core.ret; core.reset(); return code; });
       adapter.ffprobe.mockImplementation(async (args: string[]) => { core.ffprobe(...args); const code = core.ret; core.reset(); return code; });
       vi.stubGlobal('window', { location: { href: 'http://localhost/' } });
       vi.stubGlobal('FileReader', class {
@@ -57,15 +63,23 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
       const blob = await exportClipSequence(clips, files, [
         { id: 'a', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 1, endTimeSec: 3, secondaryLabelIds: [], createdAtMs: 0 },
         { id: 'b', mainLabelId: 'defense', startTimeSec: 3, endTimeSec: 3.5, secondaryLabelIds: [], createdAtMs: 0 },
-      ], { addGap: true, mainLabels: [
+      ], { onProgress: (_, ratio) => progress.push(ratio), addGap: true, mainLabels: [
         { id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 },
         { id: 'defense', name: 'Defense', color: '#fff', hotkey: 'D', preRollSec: 2, postRollSec: 3 },
       ] });
       bytes = new Uint8Array(await blob.arrayBuffer());
       // Exercise the original single-video exporter with the same real WASM core.
-      const single = await exportFilteredSegmentsToMp4(files[0], [
-        { id: 'single', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0, endTimeSec: 1, secondaryLabelIds: [], createdAtMs: 0 },
-      ], 'single.mp4', { mainLabels: [{ id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 }] });
+      // Use enough frames to get live timestamps before the encoder flushes its buffer.
+      const longSource = path.join(directory, 'long-red.mp4');
+      await run(ffmpegPath, ['-v', 'error', '-y', '-stream_loop', '3', '-i', red, '-c', 'copy', longSource]);
+      const singleFile = new File([new Uint8Array(await fs.readFile(longSource))], 'long-red.mp4');
+      const singleProgress: number[] = [];
+      const single = await exportFilteredSegmentsToMp4(singleFile, [
+        { id: 'single', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0, endTimeSec: 8, secondaryLabelIds: [], createdAtMs: 0 },
+      ], 'single.mp4', { onProgress: (_, ratio) => singleProgress.push(ratio), mainLabels: [{ id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 }] });
+      expect(singleProgress.some((ratio) => ratio > 0.15 && ratio < 0.85)).toBe(true);
+      expect(singleProgress).toEqual([...singleProgress].sort((a, b) => a - b));
+      expect(singleProgress.at(-1)).toBe(1);
       const singleOutput = path.join(directory, 'single.mp4');
       await fs.writeFile(singleOutput, new Uint8Array(await single.arrayBuffer()));
       await expectTitleBands(singleOutput);
@@ -86,8 +100,12 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
           expect(frame.stdout[0] + frame.stdout[1] + frame.stdout[2]).toBeLessThan(30);
         }
       }
+      expect(progressListeners.size).toBe(0);
       expect(core.FS.readdir('/').filter((name) => /^(sequence-|part_|gap|concat|export|audio-probe|silent-export)/.test(name))).toEqual([]);
     }
+    expect(progress.some((ratio) => ratio > 0.1 && ratio < 0.85)).toBe(true);
+    expect(progress).toEqual([...progress].sort((a, b) => a - b));
+    expect(progress.at(-1)).toBe(mode === 'native' ? 0.99 : 1);
     const output = path.join(directory, 'export.mp4'); await fs.writeFile(output, bytes);
     await expectTitleBands(output);
     const probe = JSON.parse((await run(ffprobePath, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', output])).stdout);

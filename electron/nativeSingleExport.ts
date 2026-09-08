@@ -1,3 +1,4 @@
+import { monotonicProgress, nativeProgressParser, type ExportProgress } from './exportProgress.js';
 import { spawn } from 'node:child_process';
 import { readTemporaryVideoExport } from './temporaryVideoExport.js';
 import { getSegmentTitles } from './segmentTitles.js';
@@ -10,19 +11,26 @@ export type NativeSingleExportOptions = {
 };
 type NativeExportConfig = { ffmpegPath: string; ffprobePath: string; fontPath: string };
 
-export async function nativeSingleExport(opts: NativeSingleExportOptions, config: NativeExportConfig) {
-  return readTemporaryVideoExport((outputPath) => renderNativeSingleExport({ ...opts, outputPath }, config));
+export async function nativeSingleExport(opts: NativeSingleExportOptions, config: NativeExportConfig, onProgress: ExportProgress = () => {}) {
+  const report = monotonicProgress(onProgress);
+  report('Preparing export', 0);
+  const bytes = await readTemporaryVideoExport((outputPath) => renderNativeSingleExport({ ...opts, outputPath }, config, report));
+  report('Export ready', 1);
+  return bytes;
 }
 
 async function renderNativeSingleExport(
   { inputPath, outputPath, segments, addGap, mainLabels }: NativeSingleExportOptions & { outputPath: string },
   { ffmpegPath, ffprobePath, fontPath }: NativeExportConfig,
+  onProgress: ExportProgress,
 ) {
-  function run(binary: string, args: string[]) {
+  function run(binary: string, args: string[], onTime?: (seconds: number) => void) {
     return new Promise<string>((resolve, reject) => {
-      const child = spawn(binary, args);
+      const progress = nativeProgressParser(onTime ?? (() => {}));
+      const command = onTime ? ['-progress', 'pipe:1', '-nostats', ...args] : args;
+      const child = spawn(binary, command);
       let stdout = ''; let stderr = '';
-      child.stdout.on('data', (data) => { stdout += data.toString(); });
+      child.stdout.on('data', (data) => { if (onTime) progress(data.toString()); else stdout += data.toString(); });
       child.stderr.on('data', (data) => { stderr = (stderr + data.toString()).slice(-6000); });
       child.on('error', reject);
       child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(`Video export failed (${code}): ${stderr}`)));
@@ -77,6 +85,9 @@ async function renderNativeSingleExport(
 
   args.push('-filter_complex', filterComplex, '-map', '[outv]', '-map', '[outa]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', outputPath);
 
-  await run(ffmpegPath, args);
+  const duration = segments.reduce((sum, seg) => sum + seg.endTimeSec - seg.startTimeSec, 0) + (addGap ? (segments.length - 1) * 0.5 : 0);
+  onProgress('Rendering tagged clips', 0.1);
+  await run(ffmpegPath, args, (seconds) => onProgress('Rendering tagged clips', 0.1 + Math.min(1, seconds / duration) * 0.88));
+  onProgress('Preparing download', 0.99);
   return true;
 }

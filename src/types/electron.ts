@@ -1,7 +1,9 @@
 import type { MainLabel, ProjectData, Segment } from "./project";
 
 export interface ElectronAPI {
+  onExportProgress: (callback: (progress: { exportId: string; phase: string; ratio: number }) => void) => () => void;
   runNativeClipExport: (opts: {
+    exportId?: string;
     inputPaths: string[];
     pieces: { sourceIndex: number; startTimeSec: number; endTimeSec: number; segmentIndex: number; primaryText: string; secondaryText?: string }[];
     addGap: boolean;
@@ -12,6 +14,7 @@ export interface ElectronAPI {
   saveProject: (videoFileName: string, projectData: ProjectData) => Promise<boolean>;
   readFile: (filePath: string) => Promise<Uint8Array>;
   runNativeExport: (opts: {
+    exportId?: string;
     inputPath: string;
     segments: Segment[];
     addGap: boolean;

@@ -34,3 +34,13 @@ it('releases the current source and partial output when encoding fails', async (
   expect(io.remove).toHaveBeenCalledWith('part_0.mp4');
   expect(io.loadSource).toHaveBeenCalledTimes(1);
 });
+
+it('weights live progress by duration and reserves completion until download preparation', async () => {
+  const io = backend();
+  const events: { phase: string; ratio: number }[] = [];
+  io.exec = async (_args, onTime) => { onTime?.(0.5); onTime?.(1); };
+  await renderClipExport(io, pieces, true, (phase, ratio) => events.push({ phase, ratio }));
+  expect(events.some((event) => event.phase === 'Rendering clip 1 of 4' && Math.abs(event.ratio - (0.1 + 0.5 / 11 * 0.75)) < 0.00001)).toBe(true);
+  expect(events.map((event) => event.ratio)).toEqual(events.map((event) => event.ratio).sort((a, b) => a - b));
+  expect(events.at(-1)).toEqual({ phase: 'Preparing download', ratio: 0.99 });
+});

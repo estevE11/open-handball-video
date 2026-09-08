@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
+  onExportProgress: (callback: (progress: { exportId: string; phase: string; ratio: number }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: { exportId: string; phase: string; ratio: number }) => callback(progress);
+    ipcRenderer.on('export-progress', listener);
+    return () => ipcRenderer.removeListener('export-progress', listener);
+  },
   getClipProjects: () => ipcRenderer.invoke('get-clip-projects'),
   runNativeClipExport: (opts: unknown) => ipcRenderer.invoke('run-native-clip-export', opts),
   getVideos: () => ipcRenderer.invoke('get-videos'),

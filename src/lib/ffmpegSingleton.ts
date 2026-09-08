@@ -16,9 +16,6 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
 
   console.info('[ffmpeg] getFFmpeg() creating instance');
   const ffmpeg = new FFmpeg();
-  if (onProgress) {
-    ffmpeg.on('progress', ({ progress }) => onProgress({ ratio: progress }));
-  }
   ffmpeg.on('log', ({ type, message }) => {
     // Forward ffmpeg internal logs to the console for debugging.
     const fn = type === 'fferr' ? console.warn : console.debug;

@@ -158,11 +158,13 @@ ipcMain.handle('read-file', async (_event, filePath: string) => {
   }
 });
 
-ipcMain.handle('run-native-export', async (_event, opts) => {
+ipcMain.handle('run-native-export', async (event, opts) => {
   const { nativeSingleExport } = await import('./nativeSingleExport.js');
   let fontPath = path.join(app.getAppPath(), 'public', 'fonts', 'Roboto-Bold.ttf');
   if (!fs.existsSync(fontPath)) fontPath = path.join(app.getAppPath(), 'dist', 'fonts', 'Roboto-Bold.ttf');
-  return nativeSingleExport(opts, { ffmpegPath, ffprobePath, fontPath });
+  return nativeSingleExport(opts, { ffmpegPath, ffprobePath, fontPath }, (phase, ratio) => {
+    if (!event.sender.isDestroyed()) event.sender.send('export-progress', { exportId: opts.exportId, phase, ratio });
+  });
 });
 
 
@@ -179,9 +181,11 @@ ipcMain.handle('get-clip-projects', async () => {
   return projects;
 });
 
-ipcMain.handle('run-native-clip-export', async (_event, opts) => {
+ipcMain.handle('run-native-clip-export', async (event, opts) => {
   const { nativeClipExport } = await import('./nativeClipExport.js');
   let fontPath = path.join(app.getAppPath(), 'public', 'fonts', 'Roboto-Bold.ttf');
   if (!fs.existsSync(fontPath)) fontPath = path.join(app.getAppPath(), 'dist', 'fonts', 'Roboto-Bold.ttf');
-  return nativeClipExport(opts, { ffmpegPath, ffprobePath, fontPath });
+  return nativeClipExport(opts, { ffmpegPath, ffprobePath, fontPath }, (phase, ratio) => {
+    if (!event.sender.isDestroyed()) event.sender.send('export-progress', { exportId: opts.exportId, phase, ratio });
+  });
 });

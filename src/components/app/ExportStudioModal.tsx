@@ -1,5 +1,5 @@
 import { getSegmentTitles } from '../../../electron/segmentTitles';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { LoaderCircle, Check, ChevronsUpDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -268,9 +268,18 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             </div>
             <div className="flex items-center gap-2">
               {error ? <div className="max-w-[520px] truncate text-xs text-destructive">{error}</div> : null}
-              {isRendering ? (
-                <div className="w-[220px] text-right font-mono text-xs text-muted-foreground">
-                  {phase} {(ratio * 100).toFixed(0)}%
+              {phase ? (
+                <div className="w-[260px] space-y-1.5">
+                  <div className="flex justify-between gap-2 text-xs text-muted-foreground" role="status">
+                    <span className="flex items-center gap-1.5">{isRendering && <LoaderCircle aria-hidden className="h-3 w-3 shrink-0 motion-safe:animate-spin" />}{error ? 'Export failed' : phase}</span>
+                    <span className="font-mono">{Math.floor(ratio * 100)}%</span>
+                  </div>
+                  <div role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={100}
+                    aria-valuenow={Math.floor(ratio * 100)} aria-valuetext={error ? 'Export failed' : phase}
+                    className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className={`h-full rounded-full transition-[width] duration-200 ${error ? 'bg-destructive' : 'bg-primary'}`}
+                      style={{ width: `${ratio * 100}%` }} />
+                  </div>
                 </div>
               ) : null}
               <Button
@@ -279,19 +288,21 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   if (!activeVideoInput) return;
                   setIsRendering(true);
                   setError(null);
-                  setPhase('ffmpeg:load');
+                  setPhase('Preparing export');
                   setRatio(0);
                   try {
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (filtered)', filtered.length);
                     const options = {
                       addGap, mainLabels,
-                      onProgress: (p: string, r: number) => { setPhase(p); setRatio(r); },
+                      onProgress: (p: string, r: number) => { setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
                     };
                     const blob = clips
                       ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), filtered, options)
                       : await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', options);
                     downloadBlob('export.mp4', blob);
+                    setPhase('Export ready');
+                    setRatio(1);
                   } catch (e) {
                     setError(e instanceof Error ? e.message : 'Export failed');
                     console.error('[Export Studio] export failed', e);

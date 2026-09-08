@@ -1,3 +1,5 @@
+import { runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProgress';
+import { monotonicProgress } from '../../electron/exportProgress';
 import { getSegmentTitles } from '../../electron/segmentTitles';
 import { fetchFile } from '@ffmpeg/util';
 
@@ -33,23 +35,22 @@ export async function exportFilteredSegmentsToMp4(
   outputName = 'export.mp4',
   opts: ExportMp4Options = {},
 ): Promise<Blob> {
-  const onProgress = opts.onProgress ?? (() => {});
+  const onProgress = monotonicProgress(opts.onProgress);
   const addGap = opts.addGap ?? false;
   const mainLabels = opts.mainLabels ?? [];
 
   // ELECTRON NATIVE EXPORT PATH
   if (window.electron && typeof videoInput === 'string' && videoInput.startsWith('file://')) {
     const inputPath = decodeURIComponent(videoInput.replace(/^file:\/\//, ''));
-    onProgress('native:export', 0);
-    
+
     try {
-      const data = await window.electron.runNativeExport({
+      const data = await withNativeExportProgress((exportId) => window.electron!.runNativeExport({
+        exportId,
         inputPath,
         segments,
         addGap,
         mainLabels
-      });
-      onProgress('native:export', 1);
+      }), onProgress);
 
       // Ensure we return a Blob backed by a normal ArrayBuffer (not SharedArrayBuffer).
       const buffer = new Uint8Array(data.length);
@@ -79,14 +80,15 @@ export async function exportFilteredSegmentsToMp4(
   console.info('[export] segments (raw)', segments.length);
 
   console.info('[export] calling getFFmpeg()…');
-  const ffmpeg = await getFFmpeg((p) => onProgress('ffmpeg:load', p.ratio));
+  onProgress('Loading export engine', 0);
+  const ffmpeg = await getFFmpeg();
   console.info('[export] getFFmpeg() resolved (core loaded)');
 
   const temporaryFiles = new Set<string>();
-  const runFFmpeg = async (args: string[]) => {
-    const code = await ffmpeg.exec(args);
-    if (code !== 0) throw new Error(`Video export failed (FFmpeg exit code ${code}).`);
-  };
+  let commandProgress: ((seconds: number) => void) | undefined;
+  const runFFmpeg = (args: string[]) => runWasmExportCommand(ffmpeg, args, commandProgress);
+  let result: Blob;
+
   try {
     // Load font file for overlays
     const fontName = 'font.ttf';
@@ -107,7 +109,7 @@ export async function exportFilteredSegmentsToMp4(
     const inputName = `input_${Date.now()}.mp4`;
     temporaryFiles.add(inputName);
     await safeDelete(ffmpeg, inputName);
-    onProgress('ffmpeg:write-input', 0);
+    onProgress('Loading source video', 0.03);
     console.info('[export] writing input to ffmpeg FS', { inputName });
     try {
       let videoData: Uint8Array;
@@ -124,7 +126,7 @@ export async function exportFilteredSegmentsToMp4(
       console.error('[export] failed to fetch video input', err);
       throw new Error(`Could not load video file for export. If you are using Electron, ensure the file still exists at the original path. (Error: ${err})`);
     }
-    onProgress('ffmpeg:write-input', 1);
+    onProgress('Preparing clips', 0.1);
     console.info('[export] wrote input', { inputName });
 
     const valid = segments
@@ -146,7 +148,8 @@ export async function exportFilteredSegmentsToMp4(
     const gapName = 'gap.mp4';
     if (addGap) {
       temporaryFiles.add(gapName);
-      onProgress('ffmpeg:create-gap', 0);
+      onProgress('Rendering gaps', 0.1);
+      commandProgress = (seconds) => onProgress('Rendering gaps', 0.1 + Math.min(1, seconds / 0.5) * 0.05);
       console.info('[export] creating 0.5s black gap clip');
       await safeDelete(ffmpeg, gapName);
       const probeName = `audio-probe_${Date.now()}.json`;
@@ -172,9 +175,11 @@ export async function exportFilteredSegmentsToMp4(
         '-c:a', 'aac',
         gapName
       ]);
-      onProgress('ffmpeg:create-gap', 1);
+      onProgress('Rendering gaps', 0.15);
     }
 
+    const totalDuration = valid.reduce((sum, seg) => sum + seg.endTimeSec - seg.startTimeSec, 0);
+    let renderedDuration = 0;
     const clipNames: string[] = [];
     for (let i = 0; i < valid.length; i++) {
       const seg = valid[i]!;
@@ -196,7 +201,9 @@ export async function exportFilteredSegmentsToMp4(
         vf += `,drawtext=fontfile=${fontName}:expansion=none:text='${escapeFfmpegText(secondaryText)}':x=30:y=85:fontsize=22:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
       }
 
-      onProgress('ffmpeg:cut', i / valid.length);
+      const phase = `Rendering clip ${i + 1} of ${valid.length}`;
+      commandProgress = (seconds) => onProgress(phase, 0.15 + (renderedDuration + Math.min(Number(dur), seconds)) / totalDuration * 0.7);
+      commandProgress(0);
       console.info('[export] cutting clip', {
         i: i + 1,
         total: valid.length,
@@ -236,11 +243,12 @@ export async function exportFilteredSegmentsToMp4(
         await runFFmpeg(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
       }
 
+      renderedDuration += seg.endTimeSec - seg.startTimeSec;
+      onProgress(phase, 0.15 + renderedDuration / totalDuration * 0.7);
       if (addGap && i < valid.length - 1) {
         clipNames.push(gapName);
       }
     }
-    onProgress('ffmpeg:cut', 1);
 
     const concatList = clipNames.map((n) => `file '${n}'`).join('\n');
     const concatName = `concat_${Date.now()}.txt`;
@@ -253,7 +261,9 @@ export async function exportFilteredSegmentsToMp4(
     temporaryFiles.add(outName);
     await safeDelete(ffmpeg, outName);
 
-    onProgress('ffmpeg:concat', 0);
+    const outputDuration = totalDuration + (addGap ? (valid.length - 1) * 0.5 : 0);
+    commandProgress = (seconds) => onProgress('Merging tagged clips', 0.85 + Math.min(1, seconds / outputDuration) * 0.13);
+    commandProgress(0);
     console.info('[export] concat start', { outName });
     try {
       // Try stream copy first (fastest)
@@ -285,7 +295,7 @@ export async function exportFilteredSegmentsToMp4(
         outName,
       ]);
     }
-    onProgress('ffmpeg:concat', 1);
+    onProgress('Preparing download', 0.99);
     console.info('[export] concat done', { outName });
 
     const data = (await ffmpeg.readFile(outName)) as Uint8Array;
@@ -295,11 +305,13 @@ export async function exportFilteredSegmentsToMp4(
 
     const blob = new Blob([copy], { type: 'video/mp4' });
     console.info('[export] done', { bytes: blob.size });
-    return blob;
+    result = blob;
   } finally {
     await Promise.all([...temporaryFiles].map((path) => safeDelete(ffmpeg, path)));
     console.groupEnd();
   }
+  onProgress('Export ready', 1);
+  return result;
 }
 
 
