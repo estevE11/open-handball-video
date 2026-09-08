@@ -189,3 +189,8 @@ ipcMain.handle('run-native-clip-export', async (event, opts) => {
     if (!event.sender.isDestroyed()) event.sender.send('export-progress', { exportId: opts.exportId, phase, ratio });
   });
 });
+
+ipcMain.handle('probe-video-metadata', async (_event, source: string) => {
+  const { probeNativeVideo } = await import('./videoMetadata.js');
+  return probeNativeVideo(source, ffprobePath);
+});

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electron', {
   },
   getClipProjects: () => ipcRenderer.invoke('get-clip-projects'),
   runNativeClipExport: (opts: unknown) => ipcRenderer.invoke('run-native-clip-export', opts),
+  probeVideoMetadata: (source: string) => ipcRenderer.invoke('probe-video-metadata', source),
   getVideos: () => ipcRenderer.invoke('get-videos'),
   loadProject: (videoFileName: string) => ipcRenderer.invoke('load-project', videoFileName),
   saveProject: (videoFileName: string, projectData: unknown) => ipcRenderer.invoke('save-project', videoFileName, projectData),

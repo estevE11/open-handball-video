@@ -50,11 +50,13 @@ export function Dashboard() {
     // Validate before clearing state or enabling autosave for this video.
     const raw = await window.electron.loadProject(video.name);
     const savedData = raw === null ? null : coerceProjectData(raw);
+    const metadata = await window.electron.probeVideoMetadata(video.url);
     useProjectStore.getState().resetProject();
     useVideoStore.getState().reset();
     if (savedData) replaceProject(savedData);
     setElectronVideo(video.url, {
       ...savedData?.videoMeta,
+      ...metadata,
       fileName: video.name,
       fileSize: video.size,
       fileType: savedData?.videoMeta?.fileType || 'video/mp4',
@@ -79,7 +81,7 @@ export function Dashboard() {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <Button disabled={selected.length < 2 || loading} onClick={() => { setError(''); setPending(selected.map((key) => videos.find((video) => video.path === key)!)); }}>Arrange selected clips ({selected.length})</Button>
       {projects.length > 0 && <div className="flex flex-wrap gap-2">{projects.map((project) => <Button key={project.projectId} variant="secondary" onClick={() => {
-        try { openElectronClipProject(project, videos); } catch (err) { setError(err instanceof Error ? err.message : 'Could not open project.'); }
+        void openElectronClipProject(project, videos).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not open project.'));
       }}>Open match: {project.videoMeta?.fileName} ({project.clips?.length} clips)</Button>)}</div>}
       <ScrollArea className="flex-1 border rounded-md p-4 bg-card/50">
         {videos.length === 0 && !loading && (
@@ -130,12 +132,15 @@ export function Dashboard() {
             setLoading(true); setError('');
             try {
               const clips: VideoClip[] = [];
-              for (const video of pending) clips.push({ id: createId(), fileName: video.name, fileSize: video.size,
-                fileType: 'video/mp4', lastModified: video.modifiedAt, durationSec: await readVideoDuration(video.url) });
+              for (const video of pending) {
+                const metadata = await window.electron!.probeVideoMetadata(video.url);
+                clips.push({ ...metadata, id: createId(), fileName: video.name, fileSize: video.size,
+                fileType: 'video/mp4', lastModified: video.modifiedAt, durationSec: metadata.durationSec ?? await readVideoDuration(video.url) });
+              }
               const data = withProjectClips(createEmptyProject(), clips);
               data.electronProjectKey = data.projectId;
               if (!(await window.electron!.saveProject(data.electronProjectKey, data))) throw new Error('Could not save the split match.');
-              openElectronClipProject(data, videos);
+              await openElectronClipProject(data, videos);
             } catch (err) { setError(err instanceof Error ? err.message : 'Could not prepare clips.'); }
             finally { setLoading(false); }
           })();
