@@ -32,6 +32,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
   const [mainLabelIds, setMainLabelIds] = useState<string[]>([]);
   const [secondaryIds, setSecondaryIds] = useState<string[]>([]);
+  const [excludedSegmentIds, setExcludedSegmentIds] = useState<string[]>([]);
   const [addGap, setAddGap] = useState(false);
   const exportController = useRef<AbortController | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -48,6 +49,11 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
       .filter((seg) => (secSet.size === 0 ? true : seg.secondaryLabelIds.some((id) => secSet.has(id))))
       .sort((a, b) => a.startTimeSec - b.startTimeSec);
   }, [mainLabelIds, secondaryIds, segments]);
+
+  const selectedSegments = useMemo(() => {
+    const excluded = new Set(excludedSegmentIds);
+    return filtered.filter((seg) => !excluded.has(seg.id));
+  }, [filtered, excludedSegmentIds]);
 
   const mainSummary = useMemo(() => {
     if (mainLabelIds.length === 0) return 'Any';
@@ -83,7 +89,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
       <DialogContent className="sm:max-w-[980px]">
         <DialogHeader>
           <DialogTitle>Export Studio</DialogTitle>
-          <DialogDescription>Filter segments and render a single merged MP4.</DialogDescription>
+          <DialogDescription>Filter segments, uncheck any clips to leave out, and render a single merged MP4.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
@@ -226,7 +232,8 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             <Label htmlFor="add-gap" className="text-sm cursor-pointer">Add 0.5s black gap between clips</Label>
           </div>
 
-          <div className="rounded-md border">
+          <div className="text-xs text-muted-foreground">{selectedSegments.length} of {filtered.length} matching clips selected for export</div>
+          <div className="max-h-[40vh] overflow-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -234,17 +241,18 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   <TableHead className="w-[200px]">Start</TableHead>
                   <TableHead className="w-[200px]">End</TableHead>
                   <TableHead>Secondary Tags</TableHead>
+                  <TableHead className="w-[70px] text-right">Include</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
                       No segments match the current filter.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.slice(0, 200).map((seg) => {
+                  filtered.map((seg) => {
                     const titles = getSegmentTitles(seg, mainLabels.find((l) => l.id === seg.mainLabelId));
                     const tags = seg.secondaryLabelIds
                       .map((id) => secondaryLabels.find((s) => s.id === id)?.name)
@@ -256,6 +264,18 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.startTimeSec)}</TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.endTimeSec)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{tags || '—'}</TableCell>
+                        <TableCell>
+                          <div className="flex justify-end pr-2">
+                            <Checkbox
+                              aria-label={`Include ${titles.primaryText} at ${formatTimecode(seg.startTimeSec)} in export`}
+                              checked={!excludedSegmentIds.includes(seg.id)}
+                              disabled={isRendering}
+                              onCheckedChange={(checked) => setExcludedSegmentIds((prev) => checked
+                                ? prev.filter((id) => id !== seg.id)
+                                : [...prev, seg.id])}
+                            />
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -288,9 +308,9 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                 setIsCancelling(true); exportController.current?.abort();
               }}>{isCancelling ? 'Cancelling…' : 'Cancel export'}</Button>}
               <Button
-                disabled={!activeVideoInput || filtered.length === 0 || isRendering}
+                disabled={!activeVideoInput || selectedSegments.length === 0 || isRendering}
                 onClick={async () => {
-                  if (!activeVideoInput) return;
+                  if (!activeVideoInput || selectedSegments.length === 0) return;
                   const controller = new AbortController();
                   exportController.current = controller;
                   setIsRendering(true);
@@ -299,14 +319,14 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   setRatio(0);
                   try {
                     console.group('[Export Studio] Render MP4');
-                    console.info('segments (filtered)', filtered.length);
+                    console.info('segments (selected)', selectedSegments.length);
                     const options = {
                       addGap, mainLabels, signal: controller.signal,
                       onProgress: (p: string, r: number) => { if (controller.signal.aborted) return; setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
                     };
                     const blob = clips
-                      ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), filtered, options)
-                      : await exportFilteredSegmentsToMp4(activeVideoInput, filtered, 'export.mp4', options);
+                      ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), selectedSegments, options)
+                      : await exportFilteredSegmentsToMp4(activeVideoInput, selectedSegments, 'export.mp4', options);
                     if (controller.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
                     downloadBlob('export.mp4', blob);
                     setPhase('Export ready');

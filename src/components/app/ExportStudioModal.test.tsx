@@ -4,10 +4,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ExportStudioModal } from './ExportStudioModal';
 import { useProjectStore } from '@/store/projectStore';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
+import { exportClipSequence } from '@/lib/exportClipSequence';
 
 vi.mock('@/lib/exportMp4', () => ({ exportFilteredSegmentsToMp4: vi.fn() }));
 vi.mock('@/lib/exportClipSequence', () => ({ exportClipSequence: vi.fn() }));
-afterEach(() => { cleanup(); vi.restoreAllMocks(); useProjectStore.getState().resetProject(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); useProjectStore.getState().resetProject(); });
 
 it('shows live progress, keeps failure below 100%, and resets correctly for a successful retry', async () => {
   URL.createObjectURL = vi.fn(() => 'blob:test');
@@ -70,4 +71,61 @@ it('cancels without downloading and permits an immediate retry', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
   await screen.findByText('Export ready');
   expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+});
+
+it.each(['single video', 'multiple videos'])('exports only checked matching clips for %s', async (mode) => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  const later = state.createSegmentFromTrigger(state.mainLabels[0].id, 30)!;
+  const earlier = state.createSegmentFromTrigger(state.mainLabels[0].id, 10)!;
+  const otherType = state.createSegmentFromTrigger(state.mainLabels[1].id, 20)!;
+  if (mode === 'multiple videos') useProjectStore.setState({
+    clips: ['first', 'second'].map((id) => ({ id, fileName: `${id}.mp4`, fileSize: 5, fileType: 'video/mp4', lastModified: 0, durationSec: 30 })),
+    session: { ...useProjectStore.getState().session, clipSources: [{ url: 'blob:first', file: null }, { url: 'blob:second', file: null }] },
+  });
+  const savedProject = useProjectStore.getState().exportProjectJson();
+  vi.mocked(exportFilteredSegmentsToMp4).mockResolvedValue(new Blob(['mp4']));
+  vi.mocked(exportClipSequence).mockResolvedValue(new Blob(['mp4']));
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  const clipCheckboxes = () => screen.getAllByRole('checkbox', { name: /^Include .* in export$/ });
+  expect(clipCheckboxes().every((box) => box.getAttribute('aria-checked') === 'true')).toBe(true);
+  fireEvent.click(clipCheckboxes()[0]);
+  expect(screen.getByText('2 of 3 matching clips selected for export')).toBeTruthy();
+
+  // Filter away the excluded clip and back: its exclusion must survive.
+  fireEvent.click(screen.getAllByRole('combobox')[0]);
+  fireEvent.click(screen.getByRole('option', { name: state.mainLabels[1].name }));
+  expect(clipCheckboxes()).toHaveLength(1);
+  fireEvent.click(screen.getByRole('option', { name: 'Any' }));
+  fireEvent.keyDown(screen.getByPlaceholderText('Search main labels...'), { key: 'Escape' });
+  expect(clipCheckboxes()[0].getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(clipCheckboxes()[1]);
+  fireEvent.click(clipCheckboxes()[2]);
+  expect((screen.getByRole('button', { name: 'Render MP4' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(clipCheckboxes()[1]);
+  fireEvent.click(clipCheckboxes()[2]);
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  await screen.findByText('Export ready');
+  const exported = mode === 'multiple videos'
+    ? vi.mocked(exportClipSequence).mock.lastCall![2]
+    : vi.mocked(exportFilteredSegmentsToMp4).mock.lastCall![1];
+  expect(exported.map((seg) => seg.id)).toEqual([otherType.id, later.id]);
+  expect(exported.map((seg) => seg.id)).not.toContain(earlier.id);
+  expect(useProjectStore.getState().exportProjectJson()).toBe(savedProject);
+});
+
+it('allows excluding matching clips beyond the first 200 rows', () => {
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 1000);
+  const segment = state.createSegmentFromTrigger(state.mainLabels[0].id, 10)!;
+  useProjectStore.setState({ segments: Array.from({ length: 201 }, (_, i) => ({ ...segment, id: `segment-${i}`, startTimeSec: i * 2, endTimeSec: i * 2 + 1 })) });
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  const boxes = screen.getAllByRole('checkbox', { name: /^Include .* in export$/ });
+  expect(boxes).toHaveLength(201);
+  fireEvent.click(boxes[200]);
+  expect(screen.getByText('200 of 201 matching clips selected for export')).toBeTruthy();
 });
