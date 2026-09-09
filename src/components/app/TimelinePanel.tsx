@@ -232,9 +232,10 @@ export function TimelinePanel() {
               ))}
             </div>
 
+            {/* Contain clip and playhead layers beneath the sticky labels and header. */}
             <div
               ref={tracksRef}
-              className="relative"
+              className="relative z-0"
               style={{ width: timelineW, height: trackH }}
               onMouseDown={(e) => {
                 const t = clientXToTime(e.clientX);
