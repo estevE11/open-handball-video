@@ -28,6 +28,17 @@ describe('combined match timeline', () => {
     expect(splitSegmentsAcrossClips(clips, [segment(0, 10)])).toHaveLength(1);
     expect(splitSegmentsAcrossClips(clips, [segment(30, 35)])).toHaveLength(0);
   });
+  it('preserves custom export order while keeping cross-source pieces together', () => {
+    const reordered = [{ ...segment(20, 24), id: 'later' }, { ...segment(8, 14), id: 'crossing' }, { ...segment(1, 3), id: 'first' }];
+    const parts = splitSegmentsAcrossClips(clips, reordered);
+    expect(parts.map((part) => [part.segment.id, part.segmentIndex, part.sourceIndex, part.startTimeSec, part.endTimeSec])).toEqual([
+      ['later', 0, 1, 10, 14],
+      ['crossing', 1, 0, 8, 10],
+      ['crossing', 1, 1, 0, 4],
+      ['first', 2, 0, 1, 3],
+    ]);
+    expect(reordered.map((seg) => seg.id)).toEqual(['later', 'crossing', 'first']);
+  });
   it('preserves ordered clip metadata in exported/imported JSON and reads legacy projects', () => {
     const data = withProjectClips(createEmptyProject(), [...clips].reverse());
     expect(coerceProjectData(JSON.parse(JSON.stringify(data)))).toEqual(data);

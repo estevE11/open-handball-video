@@ -140,8 +140,7 @@ export async function exportFilteredSegmentsToMp4(
         startTimeSec: Math.max(0, s.startTimeSec),
         endTimeSec: Math.max(0, s.endTimeSec),
       }))
-      .filter((s) => s.endTimeSec > s.startTimeSec + 0.02)
-      .sort((a, b) => a.startTimeSec - b.startTimeSec);
+      .filter((s) => s.endTimeSec > s.startTimeSec + 0.02);
 
     if (valid.length === 0) {
       console.error('[export] no valid segments after filtering');

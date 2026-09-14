@@ -1,5 +1,5 @@
 import { getSegmentTitles } from '../../../electron/segmentTitles';
-import { LoaderCircle, Check, ChevronsUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, LoaderCircle, Check, ChevronsUpDown } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -22,6 +22,7 @@ type ExportStudioModalProps = {
 };
 
 export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps) {
+  const projectId = useProjectStore((s) => s.projectId);
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
   const segments = useProjectStore((s) => s.segments);
@@ -33,6 +34,9 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [mainLabelIds, setMainLabelIds] = useState<string[]>([]);
   const [secondaryIds, setSecondaryIds] = useState<string[]>([]);
   const [excludedSegmentIds, setExcludedSegmentIds] = useState<string[]>([]);
+  const [exportOrder, setExportOrder] = useState<{ projectId: string; ids: string[] } | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [addGap, setAddGap] = useState(false);
   const exportController = useRef<AbortController | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -41,14 +45,32 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [ratio, setRatio] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
+  const timelineSegments = useMemo(() => [...segments].sort((a, b) => a.startTimeSec - b.startTimeSec), [segments]);
+  const timelineNumbers = useMemo(() => new Map(timelineSegments.map((seg, index) => [seg.id, index + 1])), [timelineSegments]);
+  const orderedSegments = useMemo(() => {
+    if (exportOrder?.projectId !== projectId) return timelineSegments;
+    const ranks = new Map(exportOrder.ids.map((id, index) => [id, index]));
+    return [...timelineSegments].sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity));
+  }, [timelineSegments, exportOrder, projectId]);
+
+  function moveSegment(id: string, targetId: string) {
+    if (isRendering) return;
+    const ids = orderedSegments.map((seg) => seg.id);
+    const from = ids.indexOf(id);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    setExportOrder({ projectId, ids });
+  }
+
   const filtered = useMemo(() => {
     const mainSet = new Set(mainLabelIds);
     const secSet = new Set(secondaryIds);
-    return segments
+    return orderedSegments
       .filter((seg) => (mainSet.size === 0 ? true : mainSet.has(seg.mainLabelId)))
-      .filter((seg) => (secSet.size === 0 ? true : seg.secondaryLabelIds.some((id) => secSet.has(id))))
-      .sort((a, b) => a.startTimeSec - b.startTimeSec);
-  }, [mainLabelIds, secondaryIds, segments]);
+      .filter((seg) => (secSet.size === 0 ? true : seg.secondaryLabelIds.some((id) => secSet.has(id))));
+  }, [mainLabelIds, secondaryIds, orderedSegments]);
 
   const selectedSegments = useMemo(() => {
     const excluded = new Set(excludedSegmentIds);
@@ -89,7 +111,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
       <DialogContent className="sm:max-w-[980px]">
         <DialogHeader>
           <DialogTitle>Export Studio</DialogTitle>
-          <DialogDescription>Filter segments, uncheck any clips to leave out, and render a single merged MP4.</DialogDescription>
+          <DialogDescription>Drag clips or use the arrows to set export order. Timeline # shows each clip’s original position. Uncheck clips to leave them out.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
@@ -232,14 +254,19 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             <Label htmlFor="add-gap" className="text-sm cursor-pointer">Add 0.5s black gap between clips</Label>
           </div>
 
-          <div className="text-xs text-muted-foreground">{selectedSegments.length} of {filtered.length} matching clips selected for export</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground">{selectedSegments.length} of {filtered.length} matching clips selected for export</div>
+            <Button variant="ghost" size="sm" disabled={isRendering || exportOrder?.projectId !== projectId} onClick={() => setExportOrder(null)}>Reset order</Button>
+          </div>
           <div className="max-h-[40vh] overflow-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[70px] whitespace-nowrap">Timeline #</TableHead>
+                  <TableHead className="w-[90px]">Order</TableHead>
                   <TableHead className="w-[220px]">Clip / type</TableHead>
-                  <TableHead className="w-[200px]">Start</TableHead>
-                  <TableHead className="w-[200px]">End</TableHead>
+                  <TableHead className="w-[100px]">Start</TableHead>
+                  <TableHead className="w-[100px]">End</TableHead>
                   <TableHead>Secondary Tags</TableHead>
                   <TableHead className="w-[70px] text-right">Include</TableHead>
                 </TableRow>
@@ -247,19 +274,47 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
                       No segments match the current filter.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((seg) => {
+                  filtered.map((seg, index) => {
+                    const timelineNumber = timelineNumbers.get(seg.id)!;
                     const titles = getSegmentTitles(seg, mainLabels.find((l) => l.id === seg.mainLabelId));
                     const tags = seg.secondaryLabelIds
                       .map((id) => secondaryLabels.find((s) => s.id === id)?.name)
                       .filter(Boolean)
                       .join(', ');
                     return (
-                      <TableRow key={seg.id}>
+                      <TableRow key={seg.id}
+                        className={cn(draggedId === seg.id && 'opacity-50', dropTargetId === seg.id && 'bg-accent')}
+                        onDragOver={(event) => {
+                          if (isRendering || !draggedId) return;
+                          event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropTargetId(seg.id);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (draggedId) moveSegment(draggedId, seg.id);
+                          setDraggedId(null); setDropTargetId(null);
+                        }}>
+                        <TableCell className="font-mono text-xs" aria-label={`Timeline position ${timelineNumber}`}>{timelineNumber}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <Button size="icon" variant="ghost" className="h-7 w-6 cursor-grab active:cursor-grabbing"
+                              disabled={isRendering} draggable={!isRendering} aria-label={`Drag clip ${timelineNumber} to reorder`}
+                              onDragStart={(event) => {
+                                event.dataTransfer.setData('text/plain', seg.id); event.dataTransfer.effectAllowed = 'move'; setDraggedId(seg.id);
+                              }}
+                              onDragEnd={() => { setDraggedId(null); setDropTargetId(null); }}>
+                              <GripVertical className="h-4 w-4" aria-hidden />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-6" disabled={isRendering || index === 0}
+                              aria-label={`Move clip ${timelineNumber} up`} onClick={() => moveSegment(seg.id, filtered[index - 1].id)}><ArrowUp className="h-3 w-3" aria-hidden /></Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-6" disabled={isRendering || index === filtered.length - 1}
+                              aria-label={`Move clip ${timelineNumber} down`} onClick={() => moveSegment(seg.id, filtered[index + 1].id)}><ArrowDown className="h-3 w-3" aria-hidden /></Button>
+                          </div>
+                        </TableCell>
                         <TableCell className="font-medium"><div>{titles.primaryText}</div><div className="text-xs font-normal text-muted-foreground">{titles.secondaryText}</div></TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.startTimeSec)}</TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.endTimeSec)}</TableCell>

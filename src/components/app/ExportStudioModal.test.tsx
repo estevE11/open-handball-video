@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ExportStudioModal } from './ExportStudioModal';
 import { useProjectStore } from '@/store/projectStore';
@@ -128,4 +128,56 @@ it('allows excluding matching clips beyond the first 200 rows', () => {
   expect(boxes).toHaveLength(201);
   fireEvent.click(boxes[200]);
   expect(screen.getByText('200 of 201 matching clips selected for export')).toBeTruthy();
+});
+
+it.each(['single video', 'multiple videos'])('keeps timeline numbers while reordering the %s export', async (mode) => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  const third = state.createSegmentFromTrigger(state.mainLabels[0].id, 30)!;
+  const first = state.createSegmentFromTrigger(state.mainLabels[0].id, 10)!;
+  state.createSegmentFromTrigger(state.mainLabels[1].id, 20);
+  if (mode === 'multiple videos') useProjectStore.setState({
+    clips: ['first', 'second'].map((id) => ({ id, fileName: `${id}.mp4`, fileSize: 5, fileType: 'video/mp4', lastModified: 0, durationSec: 30 })),
+    session: { ...useProjectStore.getState().session, clipSources: [{ url: 'blob:first', file: null }, { url: 'blob:second', file: null }] },
+  });
+  const savedProject = useProjectStore.getState().exportProjectJson();
+  vi.mocked(exportFilteredSegmentsToMp4).mockResolvedValue(new Blob(['mp4']));
+  vi.mocked(exportClipSequence).mockResolvedValue(new Blob(['mp4']));
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  const numbers = () => screen.getAllByRole('cell', { name: /^Timeline position / }).map((cell) => cell.textContent);
+  const row = (number: number) => screen.getByRole('cell', { name: `Timeline position ${number}` }).closest('tr')!;
+  expect(numbers()).toEqual(['1', '2', '3']);
+  fireEvent.click(screen.getByRole('button', { name: 'Move clip 3 up' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Move clip 3 up' }));
+  expect(numbers()).toEqual(['3', '1', '2']);
+  const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag clip 1 to reorder' }), { dataTransfer });
+  fireEvent.dragOver(row(2), { dataTransfer });
+  fireEvent.drop(row(2), { dataTransfer });
+  expect(numbers()).toEqual(['3', '2', '1']);
+  fireEvent.click(within(row(2)).getByRole('checkbox'));
+  fireEvent.click(screen.getAllByRole('combobox')[0]);
+  fireEvent.click(screen.getByRole('option', { name: state.mainLabels[1].name }));
+  expect(numbers()).toEqual(['2']);
+  fireEvent.click(screen.getByRole('option', { name: 'Any' }));
+  fireEvent.keyDown(screen.getByPlaceholderText('Search main labels...'), { key: 'Escape' });
+  expect(numbers()).toEqual(['3', '2', '1']);
+  expect(within(row(2)).getByRole('checkbox').getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Reset order' }));
+  expect(numbers()).toEqual(['1', '2', '3']);
+  fireEvent.click(screen.getByRole('button', { name: 'Move clip 1 down' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Move clip 3 up' }));
+  expect(numbers()).toEqual(['2', '3', '1']);
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  expect((screen.getByRole('button', { name: 'Move clip 1 up' }) as HTMLButtonElement).disabled).toBe(true);
+  await screen.findByText('Export ready');
+  const exported = mode === 'multiple videos'
+    ? vi.mocked(exportClipSequence).mock.lastCall![2]
+    : vi.mocked(exportFilteredSegmentsToMp4).mock.lastCall![1];
+  expect(exported.map((seg) => seg.id)).toEqual([third.id, first.id]);
+  expect(useProjectStore.getState().exportProjectJson()).toBe(savedProject);
 });

@@ -38,6 +38,19 @@ it('renders an individual title large and its unchanged tag type small', async (
   expect(filters).toContain("text='Attack':x=30:y=85:fontsize=22");
 });
 
+it('renders and concatenates browser clips in the requested nonchronological order', async () => {
+  const reordered = [
+    { ...segments[0], id: 'later', startTimeSec: 20, endTimeSec: 21 },
+    { ...segments[0], id: 'earlier', startTimeSec: 2, endTimeSec: 3 },
+  ];
+  await exportFilteredSegmentsToMp4(new File(['video'], 'video.mp4'), reordered);
+  const cuts = ffmpeg.exec.mock.calls.map(([args]) => args as string[]).filter((args) => args.includes('-ss'));
+  expect(cuts.map((args) => Number(args[args.indexOf('-ss') + 1]))).toEqual([20, 2]);
+  const concat = ffmpeg.writeFile.mock.calls.find(([name]) => /^concat_.*\.txt$/.test(name))!;
+  expect(new TextDecoder().decode(concat[1])).toBe("file 'clip_0.mp4'\nfile 'clip_1.mp4'");
+  expect(reordered.map((seg) => seg.id)).toEqual(['later', 'earlier']);
+});
+
 it('uses native export bytes directly without leaving an intermediate beside the source', async () => {
   const electron = { onExportProgress: vi.fn(() => () => {}), runNativeExport: vi.fn(async () => new Uint8Array([4, 5, 6])), readFile: vi.fn() };
   Object.assign(window, { electron });

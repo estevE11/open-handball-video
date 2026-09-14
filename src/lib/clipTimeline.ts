@@ -18,7 +18,8 @@ export function locateClip(clips: VideoClip[], time: number) {
 
 export function splitSegmentsAcrossClips(clips: VideoClip[], segments: Segment[]) {
   const offsets = clipOffsets(clips);
-  return [...segments].sort((a, b) => a.startTimeSec - b.startTimeSec).flatMap((segment, segmentIndex) =>
+  // Preserve export order; only the pieces within a segment follow source order.
+  return segments.flatMap((segment, segmentIndex) =>
     offsets.flatMap(({ index, start, end }) => {
       const from = Math.max(start, segment.startTimeSec);
       const to = Math.min(end, segment.endTimeSec);
