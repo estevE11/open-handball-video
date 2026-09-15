@@ -54,14 +54,19 @@ Validation includes UI ordering/seek/playback/save/restore tests, IndexedDB roll
 
 ## Vercel
 
-`vercel.json` configures the Vite build and isolation headers used by the browser's FFmpeg WebAssembly export. Deploy with:
+`vercel.json` configures the Vite build and isolation headers used by the browser's FFmpeg WebAssembly export. From the `dev` branch, deploy a preview and update its stable URL:
 
 ```sh
 vercel link
-vercel --prod
+vercel deploy --target=preview --yes -m githubDeployment=1 -m githubCommitRef=dev
+vercel alias set <preview-url> open-handball-video-dev.vercel.app
 ```
 
-Use a stable production hostname to keep access to the same browser library across deployments.
+After merging approved changes to `main`, deploy from `main` with `vercel deploy --prod --yes -m githubDeployment=1 -m githubCommitRef=main`.
+
+Builds from `dev` show `[DEV]` in the tab title and an amber corner fade, including production builds. Main builds keep the normal appearance. Vite uses `VERCEL_GIT_COMMIT_REF` on Vercel and the checked-out Git branch locally; pass the Git metadata above for CLI deployments so Vercel identifies the branch correctly.
+
+Use the stable beta (`open-handball-video.vercel.app`) and dev hostnames to retain each site's browser library across deployments. Their storage is separate.
 
 ## Implementation references
 

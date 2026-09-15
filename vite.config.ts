@@ -1,11 +1,30 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
+import { execFileSync } from 'node:child_process'
+
+function buildBranch() {
+  if (process.env.VERCEL_GIT_COMMIT_REF) return process.env.VERCEL_GIT_COMMIT_REF
+  try {
+    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch { return '' }
+}
+
+const isDevBranch = buildBranch() === 'dev'
 
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'dev-branch-indicator',
+    transformIndexHtml(html) {
+      if (!isDevBranch) return html
+      return {
+        html: html.replace('<title>', '<title>[DEV] '),
+        tags: [{ tag: 'div', attrs: { class: 'dev-corner', 'aria-hidden': 'true' }, injectTo: 'body' }],
+      }
+    },
+  }],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
