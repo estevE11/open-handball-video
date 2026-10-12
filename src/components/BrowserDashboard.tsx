@@ -45,19 +45,21 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet }: 
 
   return <div className="flex h-screen flex-col gap-5 overflow-auto bg-background p-4 text-foreground md:p-8">
     <header>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold">Open Handball Video</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy} onClick={() => videoInput.current?.click()}>{t("Add video")}</Button>
-          <Button disabled={busy} variant="secondary" onClick={() => jsonInput.current?.click()}>{t("Import project JSON")}</Button>
-          <Button disabled={busy} variant="outline" onClick={() => void run(refresh)}>{t("Refresh")}</Button>
-          <Button variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
-          <LanguageSelector compact />
-        </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+        <h1 className="text-2xl font-bold sm:text-3xl">Open Handball Video</h1>
+        <LanguageSelector compact />
       </div>
       <p className="mt-2 text-muted-foreground">{t("Add one video or several clips for a split match. Videos and projects stay in this browser.")}</p>
     </header>
     <StorageStatus />
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button disabled={busy} onClick={() => videoInput.current?.click()}>{t("Add video")}</Button>
+        <Button disabled={busy} variant="secondary" onClick={() => jsonInput.current?.click()}>{t("Import project JSON")}</Button>
+        <Button disabled={busy} variant="outline" onClick={() => void run(refresh)}>{t("Refresh")}</Button>
+      </div>
+      <Button className="ml-auto" variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
+    </div>
     {error && <p role="alert" className="rounded-md border border-destructive p-3 text-sm">{message(error)}</p>}
     <input ref={videoInput} type="file" multiple accept="video/*,.mp4,.mov,.webm,.mkv" className="hidden" aria-label={t("Add video file")} onChange={(event) => {
       const files = Array.from(event.target.files ?? []); event.target.value = '';

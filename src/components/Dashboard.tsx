@@ -82,21 +82,23 @@ export function Dashboard({ onManageLabelSets, chooseLabelSet }: { onManageLabel
   return (
     <div className="flex flex-col h-screen overflow-auto bg-background p-4 md:p-8 space-y-6">
       <header>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">Open Handball Video</h1>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
-            <LanguageSelector compact />
-            <Button aria-label={t('Refresh')} variant="outline" size="icon" onClick={fetchVideos} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Open Handball Video</h1>
+          <LanguageSelector compact />
         </div>
         <p className="text-muted-foreground mt-2">{t("Open a video, or select several clips below to create a split match.")}</p>
       </header>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={selected.length < 2 || loading} onClick={() => { setError(''); setPending(selected.map((key) => videos.find((video) => video.path === key)!)); }}>{t("Arrange selected clips ({0})", selected.length)}</Button>
+          <Button variant="outline" onClick={fetchVideos} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />{t('Refresh')}
+          </Button>
+        </div>
+        <Button className="ml-auto" variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
+      </div>
       {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
-      <Button disabled={selected.length < 2 || loading} onClick={() => { setError(''); setPending(selected.map((key) => videos.find((video) => video.path === key)!)); }}>{t("Arrange selected clips ({0})", selected.length)}</Button>
       {projects.length > 0 && <div className="flex flex-wrap gap-2">{projects.map((project) => <Button key={project.projectId} variant="secondary" onClick={() => {
         void resolveProjectLabelSet(project).then((data) => openElectronClipProject(data, videos)).catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not open project."));
       }}>{t("Open match: {0} ({1} clips)", project.videoMeta?.fileName ?? '', project.clips?.length ?? 0)}</Button>)}</div>}

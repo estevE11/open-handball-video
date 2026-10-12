@@ -439,7 +439,9 @@ it.each(['es', 'ca'] as const)('switches the whole UI to %s from the library and
   const app = render(<App />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add video' }).hasAttribute('disabled')).toBe(false));
   const buttonName = language === 'es' ? 'Español' : 'Català';
-  fireEvent.click(screen.getByRole('button', { name: buttonName }));
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  fireEvent.keyDown(screen.getByRole('combobox', { name: 'Language' }), { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByRole('option', { name: buttonName }));
   expect(document.documentElement.lang).toBe(language);
   expect(readLanguage()).toBe(language);
   expect(screen.getByRole('button', { name: translate(language, 'Add video') })).toBeTruthy();
