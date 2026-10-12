@@ -18,6 +18,8 @@ npm run lint
 
 ## Browser projects
 
+Use **Manage label sets** in the main menu to create and edit reusable main and secondary labels with the same editor used inside a video. Every new video or split match requires a label set before tagging begins. That choice is permanent for the project; editing its labels or set name updates the shared set for all videos using it. Existing projects retain their labels as reusable sets named after their videos. Removing a label from a set preserves existing tagged segments and their label names, while preventing new tags with that label.
+
 Use **Add video** to create a project. The app stores the original video and project JSON in IndexedDB on your current browser and device. Labels, settings, and segments autosave; reopening a saved project restores its video without another upload. The library supports multiple projects, JSON import/export, and deletion of both a project's video and metadata to reclaim space. **Remove video** frees a project's video storage while preserving its JSON, labels, segments, settings, and original video details. The library marks these projects as needing their video; open one and attach the original file to continue. **Delete project** removes both the video and project data.
 
 Imported JSON creates a separate project; attach its original video once when opening it. Legacy single-project localStorage autosaves migrate into the library automatically.

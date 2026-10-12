@@ -1,3 +1,5 @@
+import { projectWithLabelSet } from '@/lib/labelSets';
+import { resolveProjectLabelSet } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
 import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
 import { useEffect, useState } from 'react';
@@ -7,7 +9,7 @@ import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
 import { readVideoDuration, withProjectClips } from '@/lib/clipTimeline';
 import { openElectronClipProject } from '@/lib/electronProjectSession';
-import type { ProjectData, VideoClip } from '@/types/project';
+import type { LabelSet, ProjectData, VideoClip } from '@/types/project';
 import { useVideoStore } from '@/store/videoStore';
 import { useProjectStore } from '@/store/projectStore';
 import type { VideoFile } from '@/types/electron';
@@ -16,7 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { FileVideo, RefreshCw } from 'lucide-react';
 
-export function Dashboard() {
+export function Dashboard({ onManageLabelSets, chooseLabelSet }: { onManageLabelSets: () => void; chooseLabelSet: () => Promise<LabelSet | null> }) {
   const t = useTranslation();
   const language = useLanguageStore((s) => s.language);
   const message = useTranslatedMessage();
@@ -54,11 +56,19 @@ export function Dashboard() {
 
     // Validate before clearing state or enabling autosave for this video.
     const raw = await window.electron.loadProject(video.name);
-    const savedData = raw === null ? null : coerceProjectData(raw);
+    let savedData: ProjectData;
+    if (raw === null) {
+      const labelSet = await chooseLabelSet();
+      if (!labelSet) return;
+      savedData = projectWithLabelSet(createEmptyProject(), labelSet);
+    } else savedData = await resolveProjectLabelSet(coerceProjectData(raw));
     const metadata = await window.electron.probeVideoMetadata(video.url);
+    savedData.videoMeta = { ...savedData.videoMeta, ...metadata, fileName: video.name, fileSize: video.size,
+      fileType: savedData.videoMeta?.fileType || 'video/mp4', lastModified: video.modifiedAt };
+    if (!(await window.electron.saveProject(savedData.electronProjectKey ?? video.name, savedData))) throw new Error('Could not save this project. Please retry.');
     useProjectStore.getState().resetProject();
     useVideoStore.getState().reset();
-    if (savedData) replaceProject(savedData);
+    replaceProject(savedData);
     setElectronVideo(video.url, {
       ...savedData?.videoMeta,
       ...metadata,
@@ -75,6 +85,7 @@ export function Dashboard() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Open Handball Video</h1>
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
             <LanguageSelector compact />
             <Button aria-label={t('Refresh')} variant="outline" size="icon" onClick={fetchVideos} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -87,7 +98,7 @@ export function Dashboard() {
       {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
       <Button disabled={selected.length < 2 || loading} onClick={() => { setError(''); setPending(selected.map((key) => videos.find((video) => video.path === key)!)); }}>{t("Arrange selected clips ({0})", selected.length)}</Button>
       {projects.length > 0 && <div className="flex flex-wrap gap-2">{projects.map((project) => <Button key={project.projectId} variant="secondary" onClick={() => {
-        void openElectronClipProject(project, videos).catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not open project."));
+        void resolveProjectLabelSet(project).then((data) => openElectronClipProject(data, videos)).catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not open project."));
       }}>{t("Open match: {0} ({1} clips)", project.videoMeta?.fileName ?? '', project.clips?.length ?? 0)}</Button>)}</div>}
       <ScrollArea className="flex-1 border rounded-md p-4 bg-card/50">
         {videos.length === 0 && !loading && (
@@ -135,13 +146,15 @@ export function Dashboard() {
           void (async () => {
             setLoading(true); setError('');
             try {
+              const labelSet = await chooseLabelSet();
+              if (!labelSet) return;
               const clips: VideoClip[] = [];
               for (const video of pending) {
                 const metadata = await window.electron!.probeVideoMetadata(video.url);
                 clips.push({ ...metadata, id: createId(), fileName: video.name, fileSize: video.size,
                 fileType: 'video/mp4', lastModified: video.modifiedAt, durationSec: metadata.durationSec ?? await readVideoDuration(video.url) });
               }
-              const data = withProjectClips(createEmptyProject(), clips);
+              const data = withProjectClips(projectWithLabelSet(createEmptyProject(), labelSet), clips);
               data.electronProjectKey = data.projectId;
               if (!(await window.electron!.saveProject(data.electronProjectKey, data))) throw new Error('Could not save the split match.');
               await openElectronClipProject(data, videos);

@@ -1,3 +1,5 @@
+import { projectWithLabelSet } from '@/lib/labelSets';
+import { resolveProjectLabelSet } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
 import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
@@ -5,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClipOrderDialog } from '@/components/app/ClipOrderDialog';
 import { fileMeta, readVideoDuration, withProjectClips } from '@/lib/clipTimeline';
-import type { VideoClip } from '@/types/project';
+import type { LabelSet, VideoClip } from '@/types/project';
 import { StorageStatus } from '@/components/app/StorageStatus';
 import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
@@ -13,7 +15,7 @@ import { coerceProjectData, downloadProjectJson, readJsonFile } from '@/lib/proj
 import { openBrowserProject } from '@/lib/browserProjectSession';
 import { deleteBrowserProject, markBrowserProjectOpened, recommendSoftDelete, formatBytes, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, requestPersistentStorage, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
 
-export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
+export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet }: { onOpen: () => void; onManageLabelSets: () => void; chooseLabelSet: () => Promise<LabelSet | null> }) {
   const t = useTranslation();
   const language = useLanguageStore((s) => s.language);
   const message = useTranslatedMessage();
@@ -49,6 +51,7 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
           <Button disabled={busy} onClick={() => videoInput.current?.click()}>{t("Add video")}</Button>
           <Button disabled={busy} variant="secondary" onClick={() => jsonInput.current?.click()}>{t("Import project JSON")}</Button>
           <Button disabled={busy} variant="outline" onClick={() => void run(refresh)}>{t("Refresh")}</Button>
+          <Button variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
           <LanguageSelector compact />
         </div>
       </div>
@@ -64,7 +67,9 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
       }
       const file = files[0];
       void run(async () => {
-        const data = createEmptyProject();
+        const labelSet = await chooseLabelSet();
+        if (!labelSet) return;
+        const data = projectWithLabelSet(createEmptyProject(), labelSet);
         data.videoMeta = { fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: file.lastModified };
         await saveBrowserProject(data, file);
         void requestPersistentStorage();
@@ -98,10 +103,12 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void run(async () => {
               const { data, files } = await loadBrowserProject(project.id);
+              const linked = await resolveProjectLabelSet(data);
+              await saveBrowserProject(linked);
               await markBrowserProjectOpened(data.projectId);
-              openBrowserProject(data, files.length ? files : undefined); onOpen();
+              openBrowserProject(linked, files.length ? files : undefined); onOpen();
             })}>{t("Open project")}</Button>
-            <Button disabled={busy} variant="outline" onClick={() => downloadProjectJson(coerceProjectData(JSON.parse(project.json)), `${project.name}.json`)}>{t("Export JSON")}</Button>
+            <Button disabled={busy} variant="outline" onClick={() => void run(async () => downloadProjectJson(await resolveProjectLabelSet(coerceProjectData(JSON.parse(project.json))), `${project.name}.json`))}>{t("Export JSON")}</Button>
             {project.videoBytes > 0 && <Button disabled={busy} variant="outline" onClick={() => {
               if (window.confirm(t("Remove the stored video clips for “{0}” to free {1}? All labels, segments, and settings will be kept. Keep your original video files to attach them again later.", project.name, formatBytes(project.videoBytes)))) {
                 void run(async () => { await removeBrowserProjectVideo(project.id); await refresh(); });
@@ -121,12 +128,14 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
       onChange={(ids) => setPendingClips(ids.map((id) => pendingClips.find((item) => item.id === id)!))}
       onCancel={() => { setPendingClips([]); setError(''); }} busy={busy} error={error}
       onStart={() => void run(async () => {
+        const labelSet = await chooseLabelSet();
+        if (!labelSet) return;
         const clips: VideoClip[] = [];
         for (const item of pendingClips) {
           try { clips.push({ ...fileMeta(item.file), id: item.id, durationSec: await readVideoDuration(item.file) }); }
           catch (err) { throw new Error(`${item.file.name}: ${storageError(err)}`); }
         }
-        const data = withProjectClips(createEmptyProject(), clips);
+        const data = withProjectClips(projectWithLabelSet(createEmptyProject(), labelSet), clips);
         const files = pendingClips.map((item) => item.file);
         await saveBrowserProject(data, files);
         void requestPersistentStorage();

@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
+  getSavedProjects: () => ipcRenderer.invoke('get-saved-projects'),
+  getLabelSets: () => ipcRenderer.invoke('get-label-sets'),
+  saveLabelSet: (labelSet: unknown) => ipcRenderer.invoke('save-label-set', labelSet),
   cancelExport: (exportId: string) => ipcRenderer.invoke('cancel-export', exportId),
   onExportProgress: (callback: (progress: { exportId: string; phase: string; ratio: number }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: { exportId: string; phase: string; ratio: number }) => callback(progress);

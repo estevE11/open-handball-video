@@ -83,6 +83,15 @@ app.on('window-all-closed', () => {
 
 // --- IPC Handlers ---
 
+// Keep reusable label sets separate from per-video project sidecars.
+let labelLibrary: Promise<ReturnType<typeof import('./labelSetLibrary.js').createLabelSetLibrary>> | undefined;
+function getLabelLibrary() {
+  labelLibrary ??= import('./labelSetLibrary.js').then(({ createLabelSetLibrary }) => createLabelSetLibrary(getSavesFolderPath()));
+  return labelLibrary;
+}
+ipcMain.handle('get-label-sets', async () => (await getLabelLibrary()).list());
+ipcMain.handle('save-label-set', async (_event, raw: unknown) => (await getLabelLibrary()).save(raw));
+
 ipcMain.handle('get-videos', async () => {
   try {
     ensureFoldersExist();
@@ -181,18 +190,20 @@ ipcMain.handle('run-native-export', (event, opts) => runExportJob(event, opts.ex
 }));
 
 
-ipcMain.handle('get-clip-projects', async () => {
+async function readSavedProjects() {
   ensureFoldersExist();
   const files = await fs.promises.readdir(getSavesFolderPath());
-  const projects = [];
-  for (const file of files.filter((name) => name.endsWith('.json'))) {
+  const projects: Record<string, unknown>[] = [];
+  for (const file of files.filter((name) => name.endsWith('.json') && name !== 'label-sets.json')) {
     try {
-      const data = JSON.parse(await fs.promises.readFile(path.join(getSavesFolderPath(), file), 'utf8'));
-      if (data.electronProjectKey && Array.isArray(data.clips)) projects.push(data);
+      const data: unknown = JSON.parse(await fs.promises.readFile(path.join(getSavesFolderPath(), file), 'utf8'));
+      if (data && typeof data === 'object' && !Array.isArray(data)) projects.push(data as Record<string, unknown>);
     } catch (error) { console.warn('Could not read saved project', file, error); }
   }
   return projects;
-});
+}
+ipcMain.handle('get-saved-projects', readSavedProjects);
+ipcMain.handle('get-clip-projects', async () => (await readSavedProjects()).filter((data) => data.electronProjectKey && Array.isArray(data.clips)));
 
 ipcMain.handle('run-native-clip-export', (event, opts) => runExportJob(event, opts.exportId, async (signal) => {
   const { nativeClipExport } = await import('./nativeClipExport.js');

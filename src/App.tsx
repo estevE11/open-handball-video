@@ -1,3 +1,5 @@
+import { LabelSetsModal } from '@/components/app/LabelSetsModal';
+import { flushLabelSets, loadLabelSets, updateLabelSetLabels, useLabelSetStore } from '@/store/labelSetStore';
 import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { EventLogPanel } from '@/components/app/EventLogPanel';
@@ -15,11 +17,12 @@ import { Dashboard } from '@/components/Dashboard';
 import { BrowserDashboard } from '@/components/BrowserDashboard';
 import { currentProject } from '@/lib/browserProjectSession';
 import { saveBrowserProject, storageError } from '@/lib/browserStorage';
-import type { ProjectData } from '@/types/project';
+import type { LabelSet, ProjectData } from '@/types/project';
 
 let saves = Promise.resolve();
 function saveProject(data: ProjectData) {
   saves = saves.catch(() => {}).then(async () => {
+    await flushLabelSets();
     if (window.electron) {
       if (data.videoMeta && !(await window.electron.saveProject(data.electronProjectKey ?? data.videoMeta.fileName, data))) {
         throw new Error('Could not save this project. Please retry.');
@@ -33,6 +36,24 @@ export default function App() {
   const t = useTranslation();
   const language = useLanguageStore((s) => s.language);
   const message = useTranslatedMessage();
+  const [setsOpen, setSetsOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const selection = useRef<((set: LabelSet | null) => void) | null>(null);
+  async function chooseLabelSet(): Promise<LabelSet | null> {
+    await loadLabelSets();
+    selection.current?.(null);
+    setPickerOpen(true);
+    return new Promise((resolve) => { selection.current = resolve; });
+  }
+  function finishSelection(set: LabelSet | null) {
+    setPickerOpen(false);
+    selection.current?.(set);
+    selection.current = null;
+  }
+  const labelSetModals = <>
+    {setsOpen && <LabelSetsModal open onOpenChange={setSetsOpen} />}
+    {pickerOpen && <LabelSetsModal open onOpenChange={(open) => { if (!open) finishSelection(null); }} onSelect={finishSelection} />}
+  </>;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
@@ -44,6 +65,17 @@ export default function App() {
   useGlobalHotkeys();
 
   useEffect(() => { document.documentElement.classList.add('dark'); }, []);
+  useEffect(() => {
+    void loadLabelSets().catch(() => {});
+    const unsubscribe = useLabelSetStore.subscribe((state, previous) => {
+      if (state.sets === previous.sets) return;
+      const project = useProjectStore.getState();
+      if (!project.session.videoSourceUrl || !project.labelSetId) return;
+      const set = state.sets.find((item) => item.id === project.labelSetId);
+      if (set) project.applyLabelSet(set);
+    });
+    return unsubscribe;
+  }, []);
   useEffect(() => { document.documentElement.lang = language; }, [language]);
 
   // Subscribe immediately so even an edit followed by navigation is saved.
@@ -53,6 +85,9 @@ export default function App() {
     let active = true;
     const unsubscribe = useProjectStore.subscribe((state, previous) => {
       if (!state.session.videoSourceUrl || (state.updatedAtMs === previous.updatedAtMs && state.mainLabels === previous.mainLabels && state.secondaryLabels === previous.secondaryLabels && state.segments === previous.segments && state.videoMeta === previous.videoMeta && state.clips === previous.clips && state.settings === previous.settings)) return;
+      if (state.labelSetId && (state.mainLabels !== previous.mainLabels || state.secondaryLabels !== previous.secondaryLabels)) {
+        void updateLabelSetLabels(state.labelSetId, state.mainLabels, state.secondaryLabels).catch(() => {});
+      }
       const data = currentProject();
       pending++;
       setSaveStatus('Saving…');
@@ -65,7 +100,7 @@ export default function App() {
       }).finally(() => { pending--; });
     });
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (pending || saveFailed.current) { event.preventDefault(); event.returnValue = ''; }
+      if (pending || saveFailed.current || useLabelSetStore.getState().pending || useLabelSetStore.getState().error) { event.preventDefault(); event.returnValue = ''; }
     };
     window.addEventListener('beforeunload', beforeUnload);
     return () => { active = false; unsubscribe(); window.removeEventListener('beforeunload', beforeUnload); };
@@ -82,11 +117,11 @@ export default function App() {
     } catch (err) { setSaveError(storageError(err)); }
   }
 
-  if (window.electron && !videoSourceUrl) return <Dashboard />;
-  if (!window.electron && libraryOpen) return <BrowserDashboard onOpen={() => { setLibraryOpen(false); setSaveStatus('Saved'); }} />;
+  if (window.electron && !videoSourceUrl) return <><Dashboard onManageLabelSets={() => setSetsOpen(true)} chooseLabelSet={chooseLabelSet} />{labelSetModals}</>;
+  if (!window.electron && libraryOpen) return <><BrowserDashboard onManageLabelSets={() => setSetsOpen(true)} chooseLabelSet={chooseLabelSet} onOpen={() => { setLibraryOpen(false); setSaveStatus('Saved'); }} />{labelSetModals}</>;
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col bg-background text-foreground">
+    <><div className="flex h-full w-full min-w-0 flex-col bg-background text-foreground">
       <TopBar onOpenSettings={() => setSettingsOpen(true)} onOpenExport={() => setExportOpen(true)} showBackButton onBack={() => void backToLibrary()} />
       {!window.electron && <StorageStatus />}
       <div className="px-3 py-1 text-xs" role={saveError ? 'alert' : 'status'}>
@@ -105,6 +140,6 @@ export default function App() {
       <RequireVideoModal onBack={() => void backToLibrary()} />
       <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
       <ExportStudioModal open={exportOpen} onOpenChange={setExportOpen} />
-    </div>
+    </div>{labelSetModals}</>
   );
 }

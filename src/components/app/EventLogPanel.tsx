@@ -55,7 +55,7 @@ export function EventLogPanel() {
       className="min-h-0"
       right={
         <div className="flex items-center gap-1">
-          {mainLabels.slice(0, 3).map((l) => (
+          {mainLabels.filter((label) => !label.archived).slice(0, 3).map((l) => (
             <Button
               key={l.id}
               variant="secondary"
@@ -90,7 +90,7 @@ export function EventLogPanel() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-1">
-                {secondaryLabels.slice(0, 12).map((t) => {
+                {secondaryLabels.filter((label) => !label.archived).slice(0, 12).map((t) => {
                   const isActive = selectedSegment?.secondaryLabelIds.includes(t.id);
                   return (
                     <Button

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '@/App';
 import { readLanguage, translate, useLanguageStore } from '@/lib/i18n';
 import { useProjectStore } from '@/store/projectStore';
+import { loadLabelSets, flushLabelSets, useLabelSetStore } from '@/store/labelSetStore';
 import { deleteBrowserProject, listBrowserProjects, loadBrowserProject } from '@/lib/browserStorage';
 
 vi.mock('@/lib/videoProbe', () => ({ probeVideoFps: async () => 30 }));
@@ -25,6 +26,25 @@ beforeEach(async () => {
     persisted: async () => true,
     persist: async () => true,
   } });
+  await loadLabelSets().catch(() => {});
+  await flushLabelSets().catch(() => {});
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('ohv.library.v1', 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      for (const [name, options] of [['projects', { keyPath: 'id' }], ['videos', undefined], ['labelSets', { keyPath: 'id' }]] as const) {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, options);
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result; const tx = db.transaction('labelSets', 'readwrite');
+      tx.objectStore('labelSets').clear();
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+    request.onerror = () => reject(request.error);
+  });
+  useLabelSetStore.setState({ sets: [], loaded: false, pending: 0, error: '' });
   localStorage.clear();
   useLanguageStore.setState({ language: 'en' });
   useProjectStore.getState().resetProject();
@@ -32,12 +52,27 @@ beforeEach(async () => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); useLanguageStore.setState({ language: 'en' }); });
 
+async function chooseDefaultSet() {
+  const language = useLanguageStore.getState().language;
+  await screen.findByRole('dialog', { name: translate(language, 'Choose a label set') });
+  fireEvent.click(await screen.findByRole('button', { name: translate(language, 'Use label set {0}', translate(language, 'Default handball labels')) }));
+}
+async function enterVideo() {
+  const language = useLanguageStore.getState().language;
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: translate(language, 'Choose a label set') })
+      || screen.queryByRole('button', { name: translate(language, 'Back to projects') })).toBeTruthy();
+  });
+  if (screen.queryByRole('dialog', { name: translate(language, 'Choose a label set') })) await chooseDefaultSet();
+  await screen.findByRole('button', { name: translate(language, 'Back to projects') });
+}
+
 it('adds video, autosaves edits before immediate navigation, and restores project after remount', async () => {
   const app = render(<App />);
   await screen.findByText('No saved projects yet.');
   const file = new File(['test-video-bytes'], 'match.mp4', { type: 'video/mp4' });
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [file] } });
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   const id = useProjectStore.getState().projectId;
   act(() => {
     const state = useProjectStore.getState();
@@ -52,7 +87,7 @@ it('adds video, autosaves edits before immediate navigation, and restores projec
   useProjectStore.getState().resetProject();
   render(<App />);
   fireEvent.click(await screen.findByRole('button', { name: 'Open project' }));
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   expect(screen.queryByText('Attach project video')).toBeNull();
   expect(useProjectStore.getState().session.videoFile?.name).toBe('match.mp4');
   expect(useProjectStore.getState().segments).toHaveLength(1);
@@ -83,7 +118,7 @@ it('confirms video removal and reattaches the original file without losing analy
   await screen.findByText('No saved projects yet.');
   const file = new File(['original-video'], 'archive.mp4', { type: 'video/mp4', lastModified: 1000 });
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [file] } });
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   act(() => {
     const state = useProjectStore.getState();
     state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
@@ -137,7 +172,7 @@ it('orders a split match, seeks and plays across boundaries, and tags on match t
   fireEvent.drop(rows[0], { dataTransfer });
   expect(screen.getByRole('list', { name: 'Clip order' }).querySelector('li')?.textContent).toContain('first.mp4');
   fireEvent.click(screen.getByRole('button', { name: 'Start tagging' }));
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   const id = useProjectStore.getState().projectId;
   expect(useProjectStore.getState().clips?.map((clip) => clip.fileName)).toEqual(['first.mp4', 'second.mp4']);
   expect(useVideoStore.getState().durationSec).toBe(30);
@@ -175,7 +210,7 @@ it('orders a split match, seeks and plays across boundaries, and tags on match t
   useProjectStore.getState().resetProject();
   render(<App />);
   fireEvent.click(await screen.findByRole('button', { name: 'Open project' }));
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   expect(useProjectStore.getState().clips?.map((clip) => clip.fileName)).toEqual(['first.mp4', 'second.mp4']);
   expect(useProjectStore.getState().segments).toHaveLength(1);
 });
@@ -187,6 +222,7 @@ it('keeps the library unchanged when clip preparation fails or is cancelled', as
   await screen.findByText('No saved projects yet.');
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['a'], 'a.mp4'), new File(['b'], 'b.mp4')] } });
   fireEvent.click(await screen.findByRole('button', { name: 'Start tagging' }));
+  await chooseDefaultSet();
   await waitFor(() => expect(screen.getAllByText(/Unreadable clip/).length).toBeGreaterThan(0));
   expect(await listBrowserProjects()).toEqual([]);
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -220,7 +256,11 @@ it('creates and reopens an Electron split match using its own save key', async (
   vi.spyOn(timeline, 'readVideoDuration').mockResolvedValue(10);
   const videos = ['first.mp4', 'second.mp4'].map((name) => ({ name, path: `/videos/${name}`, url: `file:///videos/${name}`, size: 10, modifiedAt: 1, createdAt: 1 }));
   const saved: import('@/types/project').ProjectData[] = [];
+  await loadLabelSets();
   window.electron = {
+    getLabelSets: async () => useLabelSetStore.getState().sets,
+    getSavedProjects: async () => [],
+    saveLabelSet: vi.fn(async () => {}),
     cancelExport: vi.fn(async () => {}),
     probeVideoMetadata: vi.fn(async () => ({ fps: 25, durationSec: 10 })),
     onExportProgress: vi.fn(() => () => {}),
@@ -236,14 +276,14 @@ it('creates and reopens an Electron split match using its own save key', async (
     fireEvent.click(screen.getByRole('button', { name: 'Arrange selected clips (2)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Move second.mp4 up' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start tagging' }));
-    await screen.findByRole('button', { name: 'Back to projects' });
+    await enterVideo();
     expect(useProjectStore.getState().session.clipSources.map((source) => source.url)).toEqual(['file:///videos/second.mp4', 'file:///videos/first.mp4']);
     expect(window.electron.loadProject).not.toHaveBeenCalled();
     expect(useProjectStore.getState().clips?.map((clip) => clip.fps)).toEqual([25, 25]);
     act(() => { const state = useProjectStore.getState(); state.createSegmentFromTrigger(state.mainLabels[0].id, 9); });
     fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Open match: second.mp4 (2 clips)' }));
-    await screen.findByRole('button', { name: 'Back to projects' });
+    await enterVideo();
     expect(useProjectStore.getState().segments).toHaveLength(1);
     expect(useProjectStore.getState().clips?.map((clip) => clip.fileName)).toEqual(['second.mp4', 'first.mp4']);
   } finally { cleanup(); delete window.electron; }
@@ -253,7 +293,7 @@ it('renames only the chosen event and retains its type and title after saving an
   render(<App />);
   await screen.findByText('No saved projects yet.');
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['video'], 'names.mp4', { type: 'video/mp4' })] } });
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   act(() => {
     const state = useProjectStore.getState();
     state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
@@ -284,7 +324,7 @@ it('seeks five seconds, steps individual frames in both directions, and selects 
   render(<App />);
   await screen.findByText('No saved projects yet.');
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['video'], 'controls.mp4', { type: 'video/mp4' })] } });
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   const video = document.querySelector('video')!;
   Object.defineProperty(video, 'readyState', { configurable: true, value: 4 });
   Object.defineProperty(video, 'duration', { configurable: true, value: 60 });
@@ -342,7 +382,11 @@ it.each(['malformed', 'unreadable'])('keeps the Electron library recoverable aft
   const video = { name: 'bad.mp4', path: '/videos/bad.mp4', url: 'file:///videos/bad.mp4', size: 10, modifiedAt: 1, createdAt: 1 };
   const state = useProjectStore.getState();
   const invalid = { ...JSON.parse(state.exportProjectJson()), mainLabels: null };
+  await loadLabelSets();
   window.electron = {
+    getLabelSets: async () => useLabelSetStore.getState().sets,
+    getSavedProjects: async () => [],
+    saveLabelSet: vi.fn(async () => {}),
     cancelExport: vi.fn(async () => {}),
     probeVideoMetadata: vi.fn(async () => ({ fps: 25, durationSec: 10 })),
     onExportProgress: vi.fn(() => () => {}),
@@ -359,7 +403,7 @@ it.each(['malformed', 'unreadable'])('keeps the Electron library recoverable aft
     // A subsequent valid load works without restarting the app.
     vi.mocked(window.electron.loadProject).mockResolvedValue(JSON.parse(state.exportProjectJson()));
     fireEvent.click(screen.getByText('bad.mp4'));
-    await screen.findByRole('button', { name: 'Back to projects' });
+    await enterVideo();
   } finally { cleanup(); delete window.electron; }
 });
 
@@ -369,7 +413,7 @@ it('selects tagged ranges for review and skips to the next selected tag during p
   render(<App />);
   await screen.findByText('No saved projects yet.');
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['video'], 'review.mp4', { type: 'video/mp4' })] } });
-  await screen.findByRole('button', { name: 'Back to projects' });
+  await enterVideo();
   act(() => {
     const state = useProjectStore.getState();
     state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
@@ -405,7 +449,7 @@ it.each(['es', 'ca'] as const)('switches the whole UI to %s from the library and
   await waitFor(() => expect(screen.getByRole('button', { name: translate(language, 'Add video') }).hasAttribute('disabled')).toBe(false));
   const file = new File(['test-video-bytes'], 'match.mp4', { type: 'video/mp4' });
   fireEvent.change(screen.getByLabelText(translate(language, 'Add video file')), { target: { files: [file] } });
-  await screen.findByRole('button', { name: translate(language, 'Back to projects') });
+  await enterVideo();
   expect(screen.getByRole('button', { name: translate(language, 'Play') })).toBeTruthy();
   expect(screen.getByText(translate(language, 'Event Log'))).toBeTruthy();
   expect(screen.getAllByText(translate(language, 'Attack')).length).toBeGreaterThan(0);
@@ -428,4 +472,129 @@ it.each(['es', 'ca'] as const)('switches the whole UI to %s from the library and
   const projectId = useProjectStore.getState().projectId;
   await waitFor(async () => expect((await loadBrowserProject(projectId)).data.segments[0].name).toBe('Custom clip title'));
   reopened.unmount();
+});
+
+
+it('creates a reusable set, requires it for new videos, and shares edits from the video and library', async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage label sets' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Create label set' }));
+  fireEvent.change(await screen.findByLabelText('Label set name'), { target: { value: 'Squad A' } });
+  fireEvent.change(screen.getByDisplayValue('Attack'), { target: { value: 'Counterattack' } });
+  const row = screen.getByDisplayValue('Counterattack').closest('tr')!;
+  fireEvent.change(row.querySelector('input[type="color"]')!, { target: { value: '#123456' } });
+  fireEvent.change(row.querySelectorAll('input[type="number"]')[0], { target: { value: '5' } });
+  fireEvent.change(screen.getByDisplayValue('A'), { target: { value: 'C' } });
+  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Secondary Labels' }), { button: 0, ctrlKey: false });
+  fireEvent.change(screen.getByDisplayValue('Player #10'), { target: { value: 'Goalkeeper' } });
+  await flushLabelSets();
+  const shared = useLabelSetStore.getState().sets.find((set) => set.name === 'Squad A')!;
+  expect(shared.mainLabels[0]).toMatchObject({ name: 'Counterattack', color: '#123456', preRollSec: 5, hotkey: 'C' });
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(await screen.findByRole('button', { name: /Squad A/ })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['one'], 'one.mp4')] } });
+  await screen.findByRole('dialog', { name: 'Choose a label set' });
+  expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+  expect(await listBrowserProjects()).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Use label set Squad A' }));
+  await screen.findByRole('button', { name: 'Back to projects' });
+  const firstId = useProjectStore.getState().projectId;
+  expect(useProjectStore.getState().labelSetId).toBe(shared.id);
+  fireEvent.keyDown(window, { key: 'c' });
+  expect(useProjectStore.getState().segments[0].mainLabelId).toBe(shared.mainLabels[0].id);
+  fireEvent.click(screen.getByRole('button', { name: 'Labels & Settings' }));
+  expect(screen.queryByRole('button', { name: 'Use this set' })).toBeNull();
+  fireEvent.change(screen.getByDisplayValue('Counterattack'), { target: { value: 'Fast break' } });
+  await waitFor(() => expect(useLabelSetStore.getState().sets.find((set) => set.id === shared.id)?.mainLabels[0].name).toBe('Fast break'));
+  // A local edit remains undoable while the shared set follows undo/redo.
+  act(() => useProjectStore.getState().undo());
+  expect(useProjectStore.getState().mainLabels[0].name).toBe('Counterattack');
+  act(() => useProjectStore.getState().redo());
+  expect(useLabelSetStore.getState().sets.find((set) => set.id === shared.id)?.mainLabels[0].name).toBe('Fast break');
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+  await screen.findByRole('button', { name: 'Open project' });
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['two'], 'two.mp4')] } });
+  await screen.findByRole('dialog', { name: 'Choose a label set' });
+  fireEvent.click(screen.getByRole('button', { name: 'Use label set Squad A' }));
+  await screen.findByRole('button', { name: 'Back to projects' });
+  expect(useProjectStore.getState().labelSetId).toBe(shared.id);
+  expect(useProjectStore.getState().mainLabels[0]).toMatchObject({ id: shared.mainLabels[0].id, name: 'Fast break' });
+  expect(useProjectStore.getState().secondaryLabels[0].name).toBe('Goalkeeper');
+  fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+  await screen.findByRole('button', { name: 'Manage label sets' });
+  fireEvent.click(screen.getByRole('button', { name: 'Manage label sets' }));
+  fireEvent.click(await screen.findByRole('button', { name: /Squad A/ }));
+  fireEvent.change(screen.getByDisplayValue('Fast break'), { target: { value: 'Transitions' } });
+  await flushLabelSets();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  const firstCard = screen.getByText('one.mp4').closest('[class*="rounded-xl"]')!;
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  fireEvent.click(firstCard.querySelectorAll('button')[1]);
+  await waitFor(() => expect(vi.mocked(URL.createObjectURL).mock.calls.some(([blob]) => blob instanceof Blob && blob.type === 'application/json')).toBe(true));
+  const exported = vi.mocked(URL.createObjectURL).mock.calls.find(([blob]) => blob instanceof Blob && blob.type === 'application/json')![0] as Blob;
+  expect(JSON.parse(await exported.text()).mainLabels[0].name).toBe('Transitions');
+  await waitFor(() => expect(firstCard.querySelector('button')!.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(firstCard.querySelector('button')!);
+  await screen.findByRole('button', { name: 'Back to projects' });
+  expect(screen.queryByRole('dialog', { name: 'Choose a label set' })).toBeNull();
+  expect(useProjectStore.getState().labelSetId).toBe(shared.id);
+  expect(useProjectStore.getState().mainLabels[0].name).toBe('Transitions');
+  expect(useProjectStore.getState().segments).toHaveLength(1);
+  expect((await loadBrowserProject(firstId)).data.labelSetId).toBe(shared.id);
+});
+
+it('cancels label selection without creating a video project', async () => {
+  render(<App />);
+  await screen.findByText('No saved projects yet.');
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['video'], 'cancelled.mp4')] } });
+  await screen.findByRole('dialog', { name: 'Choose a label set' });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add video' }).hasAttribute('disabled')).toBe(false));
+  expect(await listBrowserProjects()).toEqual([]);
+  expect(useProjectStore.getState().session.videoSourceUrl).toBeNull();
+});
+
+
+it('requires a set before first opening a desktop video and persists shared edits through the desktop API', async () => {
+  const sets: import('@/types/project').LabelSet[] = [];
+  const projects = new Map<string, import('@/types/project').ProjectData>();
+  const video = { name: 'desktop.mp4', path: '/videos/desktop.mp4', url: 'file:///videos/desktop.mp4', size: 10, modifiedAt: 1, createdAt: 1 };
+  window.electron = {
+    getLabelSets: async () => sets,
+    getSavedProjects: async () => [...projects.values()],
+    saveLabelSet: vi.fn(async (set) => { sets.splice(0, sets.length, ...sets.filter((item) => item.id !== set.id), structuredClone(set)); }),
+    getVideos: async () => [video], getClipProjects: async () => [],
+    loadProject: vi.fn(async (name) => projects.get(name) ?? null),
+    saveProject: vi.fn(async (name, data) => { projects.set(name, structuredClone(data)); return true; }),
+    probeVideoMetadata: vi.fn(async () => ({ fps: 25, durationSec: 60 })),
+    cancelExport: vi.fn(async () => {}), onExportProgress: vi.fn(() => () => {}),
+    readFile: vi.fn(), runNativeExport: vi.fn(), runNativeClipExport: vi.fn(),
+  };
+  try {
+    render(<App />);
+    fireEvent.click(await screen.findByText('desktop.mp4'));
+    await screen.findByRole('dialog', { name: 'Choose a label set' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(window.electron.saveProject).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('desktop.mp4'));
+    await chooseDefaultSet();
+    await screen.findByRole('button', { name: 'Back to projects' });
+    const setId = useProjectStore.getState().labelSetId;
+    expect(projects.get('desktop.mp4')?.labelSetId).toBe(setId);
+    fireEvent.click(screen.getByRole('button', { name: 'Labels & Settings' }));
+    fireEvent.change(screen.getByDisplayValue('Attack'), { target: { value: 'Throw-off' } });
+    await waitFor(() => expect(sets.find((set) => set.id === setId)?.mainLabels[0].name).toBe('Throw-off'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+    await screen.findByRole('button', { name: 'Manage label sets' });
+    fireEvent.click(await screen.findByText('desktop.mp4'));
+    await screen.findByRole('button', { name: 'Back to projects' });
+    expect(screen.queryByRole('dialog', { name: 'Choose a label set' })).toBeNull();
+    expect(useProjectStore.getState().labelSetId).toBe(setId);
+    expect(useProjectStore.getState().mainLabels[0].name).toBe('Throw-off');
+    await flushLabelSets();
+  } finally { cleanup(); delete window.electron; }
 });

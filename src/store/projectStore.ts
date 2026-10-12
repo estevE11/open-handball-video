@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { Id, MainLabel, ProjectData, SecondaryLabel, Segment, VideoMeta } from '@/types/project';
+import type { Id, LabelSet, MainLabel, ProjectData, SecondaryLabel, Segment, VideoMeta } from '@/types/project';
 import { coerceProjectData } from '@/lib/projectIo';
+import { labelsEqual, projectWithLabelSet } from '@/lib/labelSets';
 import { createId } from '@/lib/ids';
 import { PROJECT_SCHEMA_VERSION, createEmptyProject } from '@/lib/projectDefaults';
 
@@ -43,6 +44,8 @@ export type ProjectState = ProjectData & {
   setVideoDurationSec: (durationSec: number) => void;
   setVideoFps: (fps: number) => void;
   clearVideoSourceUrl: () => void;
+
+  applyLabelSet: (labelSet: LabelSet) => void;
 
   upsertMainLabel: (label: MainLabel) => void;
   deleteMainLabel: (id: Id) => void;
@@ -104,6 +107,7 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
     videoMeta,
     clips,
     electronProjectKey,
+    labelSetId,
     mainLabels,
     secondaryLabels,
     segments,
@@ -119,6 +123,7 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
     videoMeta,
     clips,
     electronProjectKey,
+    labelSetId,
     mainLabels,
     secondaryLabels,
     segments,
@@ -128,8 +133,8 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
 }
 
 function pickProjectData(state: ProjectState): ProjectData {
-  const { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, mainLabels, secondaryLabels, segments, settings } = state;
-  return { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, mainLabels, secondaryLabels, segments, settings };
+  const { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, labelSetId, mainLabels, secondaryLabels, segments, settings } = state;
+  return { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, labelSetId, mainLabels, secondaryLabels, segments, settings };
 }
 
 function migrateToV1(persistedState: unknown): Partial<ProjectState> {
@@ -232,6 +237,15 @@ export const useProjectStore = create<ProjectState>()(
           }));
         },
 
+        applyLabelSet: (labelSet) => {
+          const state = get();
+          const next = projectWithLabelSet(pickProjectData(state), labelSet);
+          if (state.labelSetId === next.labelSetId && labelsEqual(state.mainLabels, next.mainLabels)
+            && labelsEqual(state.secondaryLabels, next.secondaryLabels)) return;
+          set({ labelSetId: next.labelSetId, mainLabels: next.mainLabels, secondaryLabels: next.secondaryLabels,
+            past: [], future: [], updatedAtMs: nowMs() });
+        },
+
         upsertMainLabel: (label) => {
           const normalized: MainLabel = {
             ...label,
@@ -251,8 +265,8 @@ export const useProjectStore = create<ProjectState>()(
 
         deleteMainLabel: (id) => {
           edit((s) => ({
-            mainLabels: s.mainLabels.filter((l) => l.id !== id),
-            segments: s.segments.filter((seg) => seg.mainLabelId !== id),
+            mainLabels: s.mainLabels.flatMap((label) => label.id !== id ? [label] : s.labelSetId && s.segments.some((seg) => seg.mainLabelId === id) ? [{ ...label, archived: true }] : []),
+            segments: s.labelSetId ? s.segments : s.segments.filter((seg) => seg.mainLabelId !== id),
             updatedAtMs: nowMs(),
           }));
         },
@@ -274,8 +288,8 @@ export const useProjectStore = create<ProjectState>()(
 
         deleteSecondaryLabel: (id) => {
           edit((s) => ({
-            secondaryLabels: s.secondaryLabels.filter((l) => l.id !== id),
-            segments: s.segments.map((seg) => ({
+            secondaryLabels: s.secondaryLabels.flatMap((label) => label.id !== id ? [label] : s.labelSetId && s.segments.some((seg) => seg.secondaryLabelIds.includes(id)) ? [{ ...label, archived: true }] : []),
+            segments: s.labelSetId ? s.segments : s.segments.map((seg) => ({
               ...seg,
               secondaryLabelIds: seg.secondaryLabelIds.filter((sid) => sid !== id),
             })),
@@ -286,7 +300,7 @@ export const useProjectStore = create<ProjectState>()(
         createSegmentFromTrigger: (mainLabelId, triggerTimeSec) => {
           const state = get();
           const label = state.mainLabels.find((l) => l.id === mainLabelId);
-          if (!label) return null;
+          if (!label || label.archived) return null;
 
           const duration = state.videoMeta?.durationSec;
           const start = Math.max(0, triggerTimeSec - label.preRollSec);
@@ -367,6 +381,7 @@ export const useProjectStore = create<ProjectState>()(
             ...s,
             clips: undefined,
             electronProjectKey: undefined,
+            labelSetId: undefined,
             ...data,
             past: [], future: [],
             updatedAtMs: nowMs(),
@@ -394,6 +409,7 @@ export const useProjectStore = create<ProjectState>()(
             past: [], future: [],
             clips: undefined,
             electronProjectKey: undefined,
+            labelSetId: undefined,
             lastCreatedSegmentId: null,
             selectedSegmentId: null,
             session: { videoSourceUrl: null, videoFile: null, clipSources: [], hydrated: true },

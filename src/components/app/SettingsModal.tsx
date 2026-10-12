@@ -1,3 +1,6 @@
+import { useLabelSetName } from '@/hooks/useLabelSetName';
+import { LabelSetSaveStatus } from '@/components/app/LabelSetSaveStatus';
+import { saveLabelSet, useLabelSetStore } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
 import { useTranslation, mainLabelName, secondaryLabelName } from '@/lib/i18n';
 import { Plus, Trash2 } from 'lucide-react';
@@ -17,37 +20,67 @@ import type { MainLabel, SecondaryLabel } from '@/types/project';
 type SettingsModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Supplied when editing a set from the library rather than the active video. */
+  labelSetId?: string;
 };
 
-export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalProps) {
   const t = useTranslation();
-  const mainLabels = useProjectStore((s) => s.mainLabels);
-  const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
+  const projectMainLabels = useProjectStore((s) => s.mainLabels);
+  const projectSecondaryLabels = useProjectStore((s) => s.secondaryLabels);
+  const projectLabelSetId = useProjectStore((s) => s.labelSetId);
+  const sharedSet = useLabelSetStore((s) => s.sets.find((set) => set.id === (labelSetId ?? projectLabelSetId)));
+  const setName = useLabelSetName();
+  const mainLabels = labelSetId && sharedSet ? sharedSet.mainLabels : projectMainLabels;
+  const secondaryLabels = labelSetId && sharedSet ? sharedSet.secondaryLabels : projectSecondaryLabels;
   const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
 
-  const upsertMainLabel = useProjectStore((s) => s.upsertMainLabel);
-  const deleteMainLabel = useProjectStore((s) => s.deleteMainLabel);
-  const upsertSecondaryLabel = useProjectStore((s) => s.upsertSecondaryLabel);
-  const deleteSecondaryLabel = useProjectStore((s) => s.deleteSecondaryLabel);
+  function editSet(change: Partial<NonNullable<typeof sharedSet>>) {
+    const current = useLabelSetStore.getState().sets.find((set) => set.id === sharedSet?.id);
+    if (current) void saveLabelSet({ ...current, ...change, updatedAtMs: Date.now() }).catch(() => {});
+  }
+  function upsertMainLabel(label: MainLabel) {
+    if (!labelSetId) { useProjectStore.getState().upsertMainLabel(label); return; }
+    editSet({ mainLabels: mainLabels.some((item) => item.id === label.id) ? mainLabels.map((item) => item.id === label.id ? label : item) : [...mainLabels, label] });
+  }
+  function deleteMainLabel(id: string) {
+    if (!labelSetId) { useProjectStore.getState().deleteMainLabel(id); return; }
+    editSet({ mainLabels: mainLabels.filter((label) => label.id !== id) });
+  }
+  function upsertSecondaryLabel(label: SecondaryLabel) {
+    if (!labelSetId) { useProjectStore.getState().upsertSecondaryLabel(label); return; }
+    editSet({ secondaryLabels: secondaryLabels.some((item) => item.id === label.id) ? secondaryLabels.map((item) => item.id === label.id ? label : item) : [...secondaryLabels, label] });
+  }
+  function deleteSecondaryLabel(id: string) {
+    if (!labelSetId) { useProjectStore.getState().deleteSecondaryLabel(id); return; }
+    editSet({ secondaryLabels: secondaryLabels.filter((label) => label.id !== id) });
+  }
 
   const [tab, setTab] = useState<'main' | 'secondary' | 'settings'>('main');
 
-  const mainSorted = useMemo(() => [...mainLabels].sort((a, b) => a.name.localeCompare(b.name)), [mainLabels]);
-  const secondarySorted = useMemo(() => [...secondaryLabels].sort((a, b) => a.name.localeCompare(b.name)), [secondaryLabels]);
+  const mainSorted = useMemo(() => mainLabels.filter((label) => !label.archived).sort((a, b) => a.name.localeCompare(b.name)), [mainLabels]);
+  const secondarySorted = useMemo(() => secondaryLabels.filter((label) => !label.archived).sort((a, b) => a.name.localeCompare(b.name)), [secondaryLabels]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[900px]">
         <DialogHeader>
           <DialogTitle>{t("Labels & Settings")}</DialogTitle>
           <DialogDescription>{t("Configure labeling categories, secondary tags, and project settings.")}</DialogDescription>
         </DialogHeader>
 
+        {sharedSet && <div className="space-y-2 rounded-md border p-3">
+          <Label htmlFor="label-set-name">{t('Label set name')}</Label>
+          <Input id="label-set-name" value={sharedSet.name ? setName(sharedSet) : ''} placeholder={t('Untitled label set')} onChange={(event) => editSet({ name: event.target.value })} />
+          <p className="text-xs text-muted-foreground">{t('Edits are saved to this shared label set and apply to every video using it.')}</p>
+          <LabelSetSaveStatus />
+        </div>}
+
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-          <TabsList>
+          <TabsList className="h-auto max-w-full flex-wrap justify-start">
             <TabsTrigger value="main">{t("Main Labels")}</TabsTrigger>
             <TabsTrigger value="secondary">{t("Secondary Labels")}</TabsTrigger>
-            <TabsTrigger value="settings">{t("Settings")}</TabsTrigger>
+            {!labelSetId && <TabsTrigger value="settings">{t("Settings")}</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="main" className="mt-3">
@@ -114,7 +147,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                         <Input
                           type="number"
                           value={l.preRollSec}
-                          onChange={(e) => upsertMainLabel({ ...l, preRollSec: Number(e.target.value) })}
+                          onChange={(e) => upsertMainLabel({ ...l, preRollSec: Math.max(0, Number(e.target.value)) })}
                           className="h-8"
                         />
                       </TableCell>
@@ -122,7 +155,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                         <Input
                           type="number"
                           value={l.postRollSec}
-                          onChange={(e) => upsertMainLabel({ ...l, postRollSec: Number(e.target.value) })}
+                          onChange={(e) => upsertMainLabel({ ...l, postRollSec: Math.max(0, Number(e.target.value)) })}
                           className="h-8"
                         />
                       </TableCell>

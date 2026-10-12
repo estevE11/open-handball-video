@@ -1,25 +1,7 @@
 export type Id = string;
 
-export type MainLabel = {
-  id: Id;
-  name: string;
-  /** The original name given when the label was created. */
-  defaultName?: string;
-  /** Tailwind-friendly hex is fine (e.g. "#ef4444"). */
-  color: string;
-  /** Seconds before the trigger time. */
-  preRollSec: number;
-  /** Seconds after the trigger time. */
-  postRollSec: number;
-  /** Single-character hotkey (e.g. "A"). */
-  hotkey: string;
-};
-
-export type SecondaryLabel = {
-  id: Id;
-  name: string;
-  hotkey?: string;
-};
+export type { MainLabel, SecondaryLabel, LabelSet } from '../../electron/labelSets';
+import type { MainLabel, SecondaryLabel } from '../../electron/labelSets';
 
 export type Segment = {
   id: Id;
@@ -58,6 +40,8 @@ export type ProjectData = {
   clips?: VideoClip[];
   /** Separate sidecar for an Electron split-match project. */
   electronProjectKey?: string;
+  /** Chosen once; labels are shared with other projects using this set. */
+  labelSetId?: Id;
   schemaVersion: 1;
   projectId: Id;
   createdAtMs: number;

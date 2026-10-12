@@ -50,9 +50,9 @@ export function useGlobalHotkeys() {
         if (heldRate === null) { heldRate = video.playbackRate; video.setPlaybackRate(1); }
         return;
       }
-      const main = project.mainLabels.find((label) => label.hotkey.toUpperCase() === key);
+      const main = project.mainLabels.find((label) => !label.archived && label.hotkey.toUpperCase() === key);
       if (main) { e.preventDefault(); project.createSegmentFromTrigger(main.id, video.currentTimeSec); return; }
-      const secondary = project.secondaryLabels.find((label) => label.hotkey?.toUpperCase() === key);
+      const secondary = project.secondaryLabels.find((label) => !label.archived && label.hotkey?.toUpperCase() === key);
       if (secondary) { e.preventDefault(); project.toggleSecondaryOnSelectedSegment(secondary.id); }
     }
     window.addEventListener('keydown', onKeyDown);

@@ -1,4 +1,5 @@
-import type { ProjectData } from '@/types/project';
+import { coerceLabelSet } from '../../electron/labelSets';
+import type { LabelSet, ProjectData } from '@/types/project';
 import { coerceProjectData } from '@/lib/projectIo';
 
 export type StoredProject = {
@@ -15,10 +16,12 @@ let database: Promise<IDBDatabase> | undefined;
 function openDatabase(): Promise<IDBDatabase> {
   if (!database) {
     database = new Promise((resolve, reject) => {
-      const request = indexedDB.open('ohv.library.v1', 1);
+      const request = indexedDB.open('ohv.library.v1', 2);
       request.onupgradeneeded = () => {
-        request.result.createObjectStore('projects', { keyPath: 'id' });
-        request.result.createObjectStore('videos');
+        const db = request.result;
+        if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('videos')) db.createObjectStore('videos');
+        if (!db.objectStoreNames.contains('labelSets')) db.createObjectStore('labelSets', { keyPath: 'id' });
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -209,4 +212,20 @@ export async function migrateLegacyProject(): Promise<void> {
     if (!projects.some((project) => project.id === data.projectId)) await saveBrowserProject(data);
   }
   localStorage.removeItem('ohv.project.v1');
+}
+
+
+export async function listBrowserLabelSets(): Promise<LabelSet[]> {
+  const db = await openDatabase();
+  const sets = await result<unknown[]>(db.transaction('labelSets').objectStore('labelSets').getAll());
+  return sets.map(coerceLabelSet);
+}
+
+export async function saveBrowserLabelSet(raw: LabelSet): Promise<void> {
+  const labelSet = coerceLabelSet(raw);
+  const db = await openDatabase();
+  const tx = db.transaction('labelSets', 'readwrite');
+  const done = completed(tx);
+  tx.objectStore('labelSets').put(labelSet);
+  await done;
 }

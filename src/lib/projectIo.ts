@@ -44,8 +44,8 @@ export function coerceProjectData(raw: unknown): ProjectData {
   if (!text(data.projectId) || !data.projectId || !number(data.createdAtMs) || !number(data.updatedAtMs)
     || !isObject(data.settings) || !number(data.settings.fps) || data.settings.fps <= 0
     || !Array.isArray(labels) || !labels.every((l: unknown) => isObject(l) && text(l.id) && text(l.name)
-      && text(l.color) && text(l.hotkey) && optionalText(l.defaultName) && number(l.preRollSec) && number(l.postRollSec))
-    || !Array.isArray(secondary) || !secondary.every((l: unknown) => isObject(l) && text(l.id) && text(l.name) && optionalText(l.hotkey))
+      && text(l.color) && text(l.hotkey) && optionalText(l.defaultName) && (l.archived === undefined || typeof l.archived === 'boolean') && number(l.preRollSec) && number(l.postRollSec))
+    || !Array.isArray(secondary) || !secondary.every((l: unknown) => isObject(l) && text(l.id) && text(l.name) && optionalText(l.hotkey) && (l.archived === undefined || typeof l.archived === 'boolean'))
     || !Array.isArray(segments) || !segments.every((s: unknown) => isObject(s) && text(s.id) && text(s.mainLabelId)
       && optionalText(s.name) && number(s.startTimeSec) && number(s.endTimeSec) && number(s.createdAtMs)
       && Array.isArray(s.secondaryLabelIds) && s.secondaryLabelIds.every(text))
@@ -67,6 +67,9 @@ export function coerceProjectData(raw: unknown): ProjectData {
     data.videoMeta = { ...meta, durationSec: data.clips.reduce((sum, clip) => sum + clip.durationSec, 0),
       fileSize: data.clips.reduce((sum, clip) => sum + clip.fileSize, 0) };
   }
+  if (data.labelSetId !== undefined && (typeof data.labelSetId !== 'string' || !data.labelSetId)) {
+    throw new Error('Invalid project label set.');
+  }
   if (data.electronProjectKey !== undefined && (typeof data.electronProjectKey !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(data.electronProjectKey))) {
     throw new Error('Invalid desktop project key.');
   }
@@ -79,6 +82,7 @@ export function coerceProjectData(raw: unknown): ProjectData {
     videoMeta: data.videoMeta,
     ...(data.electronProjectKey ? { electronProjectKey: data.electronProjectKey } : {}),
     ...(data.clips ? { clips: data.clips } : {}),
+    ...(data.labelSetId ? { labelSetId: data.labelSetId } : {}),
     mainLabels: labels,
     secondaryLabels: secondary,
     segments,

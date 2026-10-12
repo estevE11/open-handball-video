@@ -1,6 +1,9 @@
-import type { MainLabel, ProjectData, Segment } from "./project";
+import type { LabelSet, MainLabel, ProjectData, Segment } from "./project";
 
 export interface ElectronAPI {
+  getSavedProjects: () => Promise<unknown[]>;
+  getLabelSets: () => Promise<LabelSet[]>;
+  saveLabelSet: (labelSet: LabelSet) => Promise<void>;
   cancelExport: (exportId: string) => Promise<void>;
   probeVideoMetadata: (source: string) => Promise<{ fps?: number; durationSec?: number }>;
   onExportProgress: (callback: (progress: { exportId: string; phase: string; ratio: number }) => void) => () => void;
