@@ -21,3 +21,14 @@ export function labelsEqual(left: (MainLabel | SecondaryLabel)[], right: (MainLa
     return Object.keys({ ...a, ...b }).every((key) => a[key] === b[key]);
   });
 }
+
+/** Move active labels without changing their IDs or discarding historical labels. */
+export function moveLabelInOrder<T extends { id: string; archived?: boolean }>(labels: T[], id: string, targetId: string): T[] {
+  const active = labels.filter((label) => !label.archived);
+  const from = active.findIndex((label) => label.id === id);
+  const to = active.findIndex((label) => label.id === targetId);
+  if (from < 0 || to < 0 || from === to) return labels;
+  const [label] = active.splice(from, 1);
+  active.splice(to, 0, label);
+  return [...active, ...labels.filter((label) => label.archived)];
+}

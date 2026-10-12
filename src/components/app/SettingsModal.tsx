@@ -1,9 +1,9 @@
 import { useLabelSetName } from '@/hooks/useLabelSetName';
 import { LabelSetSaveStatus } from '@/components/app/LabelSetSaveStatus';
-import { saveLabelSet, useLabelSetStore } from '@/store/labelSetStore';
+import { editLabelSet, useLabelSetStore } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
 import { useTranslation, mainLabelName, secondaryLabelName } from '@/lib/i18n';
-import { Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { moveLabelInOrder } from '@/lib/labelSets';
 import { createId } from '@/lib/ids';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/store/projectStore';
@@ -36,8 +37,7 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
   const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
 
   function editSet(change: Partial<NonNullable<typeof sharedSet>>) {
-    const current = useLabelSetStore.getState().sets.find((set) => set.id === sharedSet?.id);
-    if (current) void saveLabelSet({ ...current, ...change, updatedAtMs: Date.now() }).catch(() => {});
+    if (sharedSet) void editLabelSet(sharedSet.id, change).catch(() => {});
   }
   function upsertMainLabel(label: MainLabel) {
     if (!labelSetId) { useProjectStore.getState().upsertMainLabel(label); return; }
@@ -58,12 +58,23 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
 
   const [tab, setTab] = useState<'main' | 'secondary' | 'settings'>('main');
 
-  const mainSorted = useMemo(() => mainLabels.filter((label) => !label.archived).sort((a, b) => a.name.localeCompare(b.name)), [mainLabels]);
-  const secondarySorted = useMemo(() => secondaryLabels.filter((label) => !label.archived).sort((a, b) => a.name.localeCompare(b.name)), [secondaryLabels]);
+  const visibleMainLabels = useMemo(() => mainLabels.filter((label) => !label.archived), [mainLabels]);
+  const visibleSecondaryLabels = useMemo(() => secondaryLabels.filter((label) => !label.archived), [secondaryLabels]);
+  const [draggedLabel, setDraggedLabel] = useState<{ kind: 'main' | 'secondary'; id: string } | null>(null);
+  function moveMainLabel(id: string, targetId: string) {
+    if (!labelSetId) { useProjectStore.getState().moveMainLabel(id, targetId); return; }
+    const next = moveLabelInOrder(mainLabels, id, targetId);
+    if (next !== mainLabels) editSet({ mainLabels: next });
+  }
+  function moveSecondaryLabel(id: string, targetId: string) {
+    if (!labelSetId) { useProjectStore.getState().moveSecondaryLabel(id, targetId); return; }
+    const next = moveLabelInOrder(secondaryLabels, id, targetId);
+    if (next !== secondaryLabels) editSet({ secondaryLabels: next });
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[900px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1000px]">
         <DialogHeader>
           <DialogTitle>{t("Labels & Settings")}</DialogTitle>
           <DialogDescription>{t("Configure labeling categories, secondary tags, and project settings.")}</DialogDescription>
@@ -75,6 +86,8 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
           <p className="text-xs text-muted-foreground">{t('Edits are saved to this shared label set and apply to every video using it.')}</p>
           <LabelSetSaveStatus />
         </div>}
+
+        <p className="text-xs text-muted-foreground">{t('Drag labels or use the arrows to change their order.')}</p>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
           <TabsList className="h-auto max-w-full flex-wrap justify-start">
@@ -110,6 +123,7 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]"> </TableHead>
+                    <TableHead className="w-[90px]">{t('Order')}</TableHead>
                     <TableHead>{t("Type name")}</TableHead>
                     <TableHead className="w-[100px]">{t("Original preset")}</TableHead>
                     <TableHead className="w-[110px]">{t("Color")}</TableHead>
@@ -120,10 +134,22 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mainSorted.map((l) => (
-                    <TableRow key={l.id}>
+                  {visibleMainLabels.map((l, index) => (
+                    <TableRow key={l.id} className={cn(draggedLabel?.id === l.id && 'opacity-50')}
+                      onDragOver={(event) => { if (draggedLabel?.kind === 'main') event.preventDefault(); }}
+                      onDrop={(event) => {
+                        if (draggedLabel?.kind !== 'main') return;
+                        event.preventDefault();
+                        moveMainLabel(draggedLabel.id, l.id);
+                        setDraggedLabel(null);
+                      }}>
                       <TableCell>
                         <div className="h-4 w-4 rounded-sm" style={{ backgroundColor: l.color }} aria-hidden />
+                      </TableCell>
+                      <TableCell>
+                        <LabelOrderControls name={mainLabelName(l, t)} index={index} count={visibleMainLabels.length}
+                          onMove={(direction) => moveMainLabel(l.id, visibleMainLabels[index + direction].id)}
+                          onDragStart={() => setDraggedLabel({ kind: 'main', id: l.id })} onDragEnd={() => setDraggedLabel(null)} />
                       </TableCell>
                       <TableCell>
                         <Input
@@ -196,14 +222,27 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[90px]">{t('Order')}</TableHead>
                     <TableHead>{t("Name")}</TableHead>
                     <TableHead className="w-[140px]">{t("Hotkey")}</TableHead>
                     <TableHead className="w-[60px]"> </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {secondarySorted.map((l) => (
-                    <TableRow key={l.id}>
+                  {visibleSecondaryLabels.map((l, index) => (
+                    <TableRow key={l.id} className={cn(draggedLabel?.id === l.id && 'opacity-50')}
+                      onDragOver={(event) => { if (draggedLabel?.kind === 'secondary') event.preventDefault(); }}
+                      onDrop={(event) => {
+                        if (draggedLabel?.kind !== 'secondary') return;
+                        event.preventDefault();
+                        moveSecondaryLabel(draggedLabel.id, l.id);
+                        setDraggedLabel(null);
+                      }}>
+                      <TableCell>
+                        <LabelOrderControls name={secondaryLabelName(l, t)} index={index} count={visibleSecondaryLabels.length}
+                          onMove={(direction) => moveSecondaryLabel(l.id, visibleSecondaryLabels[index + direction].id)}
+                          onDragStart={() => setDraggedLabel({ kind: 'secondary', id: l.id })} onDragEnd={() => setDraggedLabel(null)} />
+                      </TableCell>
                       <TableCell>
                         <Input value={secondaryLabelName(l, t)} onChange={(e) => upsertSecondaryLabel({ ...l, name: e.target.value })} className="h-8" />
                       </TableCell>
@@ -256,4 +295,19 @@ export function SettingsModal({ open, onOpenChange, labelSetId }: SettingsModalP
   );
 }
 
-
+function LabelOrderControls({ name, index, count, onMove, onDragStart, onDragEnd }: {
+  name: string; index: number; count: number; onMove: (direction: -1 | 1) => void;
+  onDragStart: () => void; onDragEnd: () => void;
+}) {
+  const t = useTranslation();
+  return <div className="flex items-center">
+    <Button variant="ghost" size="icon" className="h-7 w-6 cursor-grab active:cursor-grabbing" draggable
+      aria-label={t('Drag label {0} to reorder', name)} onDragStart={(event) => {
+        event.dataTransfer.setData('text/plain', name); event.dataTransfer.effectAllowed = 'move'; onDragStart();
+      }} onDragEnd={onDragEnd}><GripVertical className="h-4 w-4" aria-hidden /></Button>
+    <Button variant="ghost" size="icon" className="h-7 w-6" disabled={index === 0}
+      aria-label={t('Move label {0} up', name)} onClick={() => onMove(-1)}><ArrowUp className="h-3 w-3" aria-hidden /></Button>
+    <Button variant="ghost" size="icon" className="h-7 w-6" disabled={index === count - 1}
+      aria-label={t('Move label {0} down', name)} onClick={() => onMove(1)}><ArrowDown className="h-3 w-3" aria-hidden /></Button>
+  </div>;
+}

@@ -478,7 +478,9 @@ it.each(['es', 'ca'] as const)('switches the whole UI to %s from the library and
 it('creates a reusable set, requires it for new videos, and shares edits from the video and library', async () => {
   render(<App />);
   fireEvent.click(await screen.findByRole('button', { name: 'Manage label sets' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Create label set' }));
+  const createSetButton = await screen.findByRole('button', { name: 'Create label set' });
+  await waitFor(() => expect(createSetButton.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(createSetButton);
   fireEvent.change(await screen.findByLabelText('Label set name'), { target: { value: 'Squad A' } });
   fireEvent.change(screen.getByDisplayValue('Attack'), { target: { value: 'Counterattack' } });
   const row = screen.getByDisplayValue('Counterattack').closest('tr')!;
@@ -597,4 +599,64 @@ it('requires a set before first opening a desktop video and persists shared edit
     expect(useProjectStore.getState().mainLabels[0].name).toBe('Throw-off');
     await flushLabelSets();
   } finally { cleanup(); delete window.electron; }
+});
+
+it('shares custom main and secondary label order, preserves tags, and restores order after reload', async () => {
+  const app = render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Manage label sets' }));
+  const defaultSetButton = await screen.findByRole('button', { name: /^Default handball labels/ });
+  await waitFor(() => expect(defaultSetButton.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(defaultSetButton);
+  fireEvent.click(screen.getByRole('button', { name: 'Move label Defense up' }));
+  fireEvent.change(screen.getByDisplayValue('Defense'), { target: { value: 'Zebra defense' } });
+  const mainRows = [...screen.getByRole('table').querySelectorAll('tbody tr')];
+  expect(mainRows.map((row) => row.querySelector('input')!.value)).toEqual(['Zebra defense', 'Attack']);
+  expect(screen.getByRole('button', { name: 'Move label Zebra defense up' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Secondary Labels' }), { button: 0, ctrlKey: false });
+  fireEvent.click(screen.getByRole('button', { name: 'Move label Player #9 up' }));
+  await flushLabelSets();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['video'], 'ordered.mp4')] } });
+  await enterVideo();
+  expect(useProjectStore.getState().mainLabels.map((label) => label.name)).toEqual(['Zebra defense', 'Attack']);
+  expect(useProjectStore.getState().secondaryLabels.map((label) => label.name)).toEqual(['Player #9', 'Player #10']);
+  const state = useProjectStore.getState();
+  act(() => {
+    const segment = state.createSegmentFromTrigger(state.mainLabels[1].id, 10)!;
+    state.renameSegment(segment.id, 'Fast break');
+    state.toggleSecondaryOnSelectedSegment(state.secondaryLabels[0].id);
+  });
+  const tags = useProjectStore.getState().segments;
+  fireEvent.click(screen.getByRole('button', { name: 'Labels & Settings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Move label Attack up' }));
+  expect(useProjectStore.getState().mainLabels.map((label) => label.name)).toEqual(['Attack', 'Zebra defense']);
+  act(() => useProjectStore.getState().undo());
+  expect(useProjectStore.getState().mainLabels.map((label) => label.name)).toEqual(['Zebra defense', 'Attack']);
+  act(() => useProjectStore.getState().redo());
+  expect(useProjectStore.getState().mainLabels.map((label) => label.name)).toEqual(['Attack', 'Zebra defense']);
+  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Secondary Labels' }), { button: 0, ctrlKey: false });
+  const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
+  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag label Player #10 to reorder' }), { dataTransfer });
+  fireEvent.dragOver(screen.getByDisplayValue('Player #9').closest('tr')!, { dataTransfer });
+  fireEvent.drop(screen.getByDisplayValue('Player #9').closest('tr')!, { dataTransfer });
+  expect(useProjectStore.getState().secondaryLabels.map((label) => label.name)).toEqual(['Player #10', 'Player #9']);
+  expect(useProjectStore.getState().segments).toEqual(tags);
+  await flushLabelSets();
+  const setId = useProjectStore.getState().labelSetId;
+  const set = useLabelSetStore.getState().sets.find((item) => item.id === setId)!;
+  expect(set.mainLabels.map((label) => label.name)).toEqual(['Attack', 'Zebra defense']);
+  expect(set.secondaryLabels.map((label) => label.name)).toEqual(['Player #10', 'Player #9']);
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+  await screen.findByRole('button', { name: 'Open project' });
+  app.unmount();
+  useLabelSetStore.setState({ loaded: false, sets: [] });
+  useProjectStore.getState().resetProject();
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open project' }));
+  await enterVideo();
+  expect(useProjectStore.getState().mainLabels.map((label) => label.name)).toEqual(['Attack', 'Zebra defense']);
+  expect(useProjectStore.getState().secondaryLabels.map((label) => label.name)).toEqual(['Player #10', 'Player #9']);
+  expect(useProjectStore.getState().segments).toEqual(tags);
 });

@@ -247,5 +247,9 @@
   "This label set is unavailable. Please retry.": "Este conjunto de etiquetas no está disponible. Inténtalo de nuevo.",
   "Invalid project label set.": "Conjunto de etiquetas del proyecto no válido.",
   "Invalid label set library.": "Biblioteca de conjuntos de etiquetas no válida.",
-  "Imported label set": "Conjunto de etiquetas importado"
+  "Imported label set": "Conjunto de etiquetas importado",
+  "Drag labels or use the arrows to change their order.": "Arrastra las etiquetas o usa las flechas para cambiar su orden.",
+  "Drag label {0} to reorder": "Arrastra la etiqueta {0} para reordenar",
+  "Move label {0} up": "Subir etiqueta {0}",
+  "Move label {0} down": "Bajar etiqueta {0}"
 }

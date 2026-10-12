@@ -64,6 +64,12 @@ export function saveLabelSet(raw: LabelSet): Promise<void> {
   return writes;
 }
 
+export function editLabelSet(id: string, change: Partial<Pick<LabelSet, 'name' | 'mainLabels' | 'secondaryLabels'>>) {
+  const current = useLabelSetStore.getState().sets.find((set) => set.id === id);
+  if (!current) return Promise.reject(new Error('This label set is unavailable. Please retry.'));
+  return saveLabelSet({ ...current, ...change, updatedAtMs: Date.now() });
+}
+
 export function flushLabelSets() { return writes; }
 export function updateLabelSetLabels(id: string, mainLabels: MainLabel[], secondaryLabels: SecondaryLabel[]) {
   const labelSet = useLabelSetStore.getState().sets.find((set) => set.id === id);

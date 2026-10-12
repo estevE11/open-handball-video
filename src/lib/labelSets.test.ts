@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { coerceLabelSet } from '../../electron/labelSets';
 import { createEmptyProject } from '@/lib/projectDefaults';
 import { coerceProjectData } from '@/lib/projectIo';
-import { projectWithLabelSet } from '@/lib/labelSets';
+import { moveLabelInOrder, projectWithLabelSet } from '@/lib/labelSets';
 import { listBrowserLabelSets, loadBrowserProject, saveBrowserProject } from '@/lib/browserStorage';
 import { flushLabelSets, loadLabelSets, resolveProjectLabelSet, saveLabelSet, useLabelSetStore } from '@/store/labelSetStore';
 import type { LabelSet } from '@/types/project';
@@ -110,4 +110,15 @@ it('reports failed shared saves and allows retry without losing the editable set
     expect(useLabelSetStore.getState()).toMatchObject({ error: '', pending: 0 });
     expect(save).toHaveBeenCalledTimes(2);
   } finally { delete window.electron; }
+});
+
+
+it('reorders active labels by ID without losing archived labels or mutating the original order', () => {
+  const labels = [{ id: 'first' }, { id: 'retired', archived: true }, { id: 'second' }, { id: 'third' }];
+  expect(moveLabelInOrder(labels, 'third', 'first').map((label) => label.id)).toEqual(['third', 'first', 'second', 'retired']);
+  expect(labels.map((label) => label.id)).toEqual(['first', 'retired', 'second', 'third']);
+  expect(moveLabelInOrder(labels, 'first', 'first')).toBe(labels);
+  expect(moveLabelInOrder(labels, 'missing', 'first')).toBe(labels);
+  expect(moveLabelInOrder(labels, 'retired', 'first')).toBe(labels);
+  expect(moveLabelInOrder(labels, 'first', 'retired')).toBe(labels);
 });

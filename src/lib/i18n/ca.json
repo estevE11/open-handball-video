@@ -247,5 +247,9 @@
   "This label set is unavailable. Please retry.": "Aquest conjunt d’etiquetes no està disponible. Torna-ho a provar.",
   "Invalid project label set.": "Conjunt d’etiquetes del projecte no vàlid.",
   "Invalid label set library.": "Biblioteca de conjunts d’etiquetes no vàlida.",
-  "Imported label set": "Conjunt d’etiquetes importat"
+  "Imported label set": "Conjunt d’etiquetes importat",
+  "Drag labels or use the arrows to change their order.": "Arrossega les etiquetes o fes servir les fletxes per canviar-ne l’ordre.",
+  "Drag label {0} to reorder": "Arrossega l’etiqueta {0} per reordenar",
+  "Move label {0} up": "Mou l’etiqueta {0} amunt",
+  "Move label {0} down": "Mou l’etiqueta {0} avall"
 }

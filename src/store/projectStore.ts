@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { Id, LabelSet, MainLabel, ProjectData, SecondaryLabel, Segment, VideoMeta } from '@/types/project';
 import { coerceProjectData } from '@/lib/projectIo';
-import { labelsEqual, projectWithLabelSet } from '@/lib/labelSets';
+import { labelsEqual, moveLabelInOrder, projectWithLabelSet } from '@/lib/labelSets';
 import { createId } from '@/lib/ids';
 import { PROJECT_SCHEMA_VERSION, createEmptyProject } from '@/lib/projectDefaults';
 
@@ -46,6 +46,9 @@ export type ProjectState = ProjectData & {
   clearVideoSourceUrl: () => void;
 
   applyLabelSet: (labelSet: LabelSet) => void;
+
+  moveMainLabel: (id: Id, targetId: Id) => void;
+  moveSecondaryLabel: (id: Id, targetId: Id) => void;
 
   upsertMainLabel: (label: MainLabel) => void;
   deleteMainLabel: (id: Id) => void;
@@ -244,6 +247,17 @@ export const useProjectStore = create<ProjectState>()(
             && labelsEqual(state.secondaryLabels, next.secondaryLabels)) return;
           set({ labelSetId: next.labelSetId, mainLabels: next.mainLabels, secondaryLabels: next.secondaryLabels,
             past: [], future: [], updatedAtMs: nowMs() });
+        },
+
+        moveMainLabel: (id, targetId) => {
+          const mainLabels = moveLabelInOrder(get().mainLabels, id, targetId);
+          if (mainLabels === get().mainLabels) return;
+          edit(() => ({ mainLabels, updatedAtMs: nowMs() }));
+        },
+        moveSecondaryLabel: (id, targetId) => {
+          const secondaryLabels = moveLabelInOrder(get().secondaryLabels, id, targetId);
+          if (secondaryLabels === get().secondaryLabels) return;
+          edit(() => ({ secondaryLabels, updatedAtMs: nowMs() }));
         },
 
         upsertMainLabel: (label) => {
