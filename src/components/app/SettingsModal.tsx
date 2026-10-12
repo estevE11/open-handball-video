@@ -1,3 +1,5 @@
+import { LanguageSelector } from '@/components/app/LanguageSelector';
+import { useTranslation, mainLabelName, secondaryLabelName } from '@/lib/i18n';
 import { Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
@@ -18,6 +20,7 @@ type SettingsModalProps = {
 };
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+  const t = useTranslation();
   const mainLabels = useProjectStore((s) => s.mainLabels);
   const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
   const detectedFps = useProjectStore((s) => s.videoMeta?.fps);
@@ -36,28 +39,28 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[900px]">
         <DialogHeader>
-          <DialogTitle>Labels & Settings</DialogTitle>
-          <DialogDescription>Configure labeling categories, secondary tags, and project settings.</DialogDescription>
+          <DialogTitle>{t("Labels & Settings")}</DialogTitle>
+          <DialogDescription>{t("Configure labeling categories, secondary tags, and project settings.")}</DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
           <TabsList>
-            <TabsTrigger value="main">Main Labels</TabsTrigger>
-            <TabsTrigger value="secondary">Secondary Labels</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="main">{t("Main Labels")}</TabsTrigger>
+            <TabsTrigger value="secondary">{t("Secondary Labels")}</TabsTrigger>
+            <TabsTrigger value="settings">{t("Settings")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="main" className="mt-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">Main labels (timeline tracks)</div>
+              <div className="text-sm font-medium">{t("Main labels (timeline tracks)")}</div>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => {
                   const l: MainLabel = {
                     id: createId(),
-                    name: 'New Label',
-                    defaultName: 'New Label',
+                    name: t("New Label"),
+                    defaultName: t("New Label"),
                     color: '#22c55e',
                     preRollSec: 2,
                     postRollSec: 3,
@@ -66,9 +69,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                   upsertMainLabel(l);
                 }}
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Add
-              </Button>
+                <Plus className="mr-2 h-4 w-4" />{t("Add")}</Button>
             </div>
 
             <div className="mt-2 rounded-md border">
@@ -76,12 +77,12 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]"> </TableHead>
-                    <TableHead>Type name</TableHead>
-                    <TableHead className="w-[100px]">Original preset</TableHead>
-                    <TableHead className="w-[110px]">Color</TableHead>
-                    <TableHead className="w-[120px]">Pre-roll (s)</TableHead>
-                    <TableHead className="w-[120px]">Post-roll (s)</TableHead>
-                    <TableHead className="w-[120px]">Hotkey</TableHead>
+                    <TableHead>{t("Type name")}</TableHead>
+                    <TableHead className="w-[100px]">{t("Original preset")}</TableHead>
+                    <TableHead className="w-[110px]">{t("Color")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Pre-roll (s)")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Post-roll (s)")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Hotkey")}</TableHead>
                     <TableHead className="w-[60px]"> </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -93,13 +94,13 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                       </TableCell>
                       <TableCell>
                         <Input
-                          value={l.name}
+                          value={mainLabelName(l, t)}
                           onChange={(e) => upsertMainLabel({ ...l, name: e.target.value })}
                           className="h-8"
                         />
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground italic">
-                        {l.defaultName || 'Custom'}
+                        {l.defaultName === 'Attack' || l.defaultName === 'Defense' ? t(l.defaultName) : l.defaultName || t("Custom")}
                       </TableCell>
                       <TableCell>
                         <Input
@@ -133,7 +134,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                         />
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deleteMainLabel(l.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('Delete label')} onClick={() => deleteMainLabel(l.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -146,26 +147,24 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
           <TabsContent value="secondary" className="mt-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">Secondary labels (tags)</div>
+              <div className="text-sm font-medium">{t("Secondary labels (tags)")}</div>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => {
-                  const l: SecondaryLabel = { id: createId(), name: 'New Tag', hotkey: 'T' };
+                  const l: SecondaryLabel = { id: createId(), name: t("New Tag"), hotkey: 'T' };
                   upsertSecondaryLabel(l);
                 }}
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Add
-              </Button>
+                <Plus className="mr-2 h-4 w-4" />{t("Add")}</Button>
             </div>
 
             <div className="mt-2 rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="w-[140px]">Hotkey</TableHead>
+                    <TableHead>{t("Name")}</TableHead>
+                    <TableHead className="w-[140px]">{t("Hotkey")}</TableHead>
                     <TableHead className="w-[60px]"> </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -173,7 +172,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                   {secondarySorted.map((l) => (
                     <TableRow key={l.id}>
                       <TableCell>
-                        <Input value={l.name} onChange={(e) => upsertSecondaryLabel({ ...l, name: e.target.value })} className="h-8" />
+                        <Input value={secondaryLabelName(l, t)} onChange={(e) => upsertSecondaryLabel({ ...l, name: e.target.value })} className="h-8" />
                       </TableCell>
                       <TableCell>
                         <Input
@@ -183,7 +182,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                         />
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deleteSecondaryLabel(l.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('Delete label')} onClick={() => deleteSecondaryLabel(l.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -193,19 +192,19 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               </Table>
             </div>
 
-            <div className="mt-2 text-xs text-muted-foreground">
-              Tip: after creating a segment (main label), press a secondary hotkey to append the tag to the most recent segment.
-            </div>
+            <div className="mt-2 text-xs text-muted-foreground">{t("Tip: after creating a segment (main label), press a secondary hotkey to append the tag to the most recent segment.")}</div>
           </TabsContent>
 
           <TabsContent value="settings" className="mt-3">
             <div className="grid gap-3">
               <div className="rounded-md border p-3">
-                <div className="text-sm font-medium">Playback</div>
+                <LanguageSelector />
+                <p className="mt-2 text-xs text-muted-foreground">{t('Choose your interface language.')}</p>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-sm font-medium">{t("Playback")}</div>
                 <div className="mt-2 grid grid-cols-[140px_1fr] items-center gap-2">
-                  <Label htmlFor="fps" className="text-sm">
-                    FPS (frame step)
-                  </Label>
+                  <Label htmlFor="fps" className="text-sm">{t("FPS (frame step)")}</Label>
                   <Input
                     id="fps"
                     type="number"
@@ -214,9 +213,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                     className="h-8"
                   />
                 </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Detected from the loaded video via ffprobe. (If unknown, falls back to 30 fps.)
-                </div>
+                <div className="mt-2 text-xs text-muted-foreground">{t("Detected from the loaded video via ffprobe. (If unknown, falls back to 30 fps.)")}</div>
               </div>
             </div>
           </TabsContent>

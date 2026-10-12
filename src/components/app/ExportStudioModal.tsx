@@ -1,3 +1,5 @@
+import { useLocalizedLabels } from '@/hooks/useLocalizedLabels';
+import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { getSegmentTitles } from '../../../electron/segmentTitles';
 import { ArrowDown, ArrowUp, GripVertical, LoaderCircle, Check, ChevronsUpDown } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
@@ -22,9 +24,10 @@ type ExportStudioModalProps = {
 };
 
 export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps) {
+  const t = useTranslation();
+  const message = useTranslatedMessage();
   const projectId = useProjectStore((s) => s.projectId);
-  const mainLabels = useProjectStore((s) => s.mainLabels);
-  const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
+  const { mainLabels, secondaryLabels } = useLocalizedLabels();
   const segments = useProjectStore((s) => s.segments);
   const clips = useProjectStore((s) => s.clips);
   const clipSources = useProjectStore((s) => s.session.clipSources);
@@ -78,16 +81,16 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   }, [filtered, excludedSegmentIds]);
 
   const mainSummary = useMemo(() => {
-    if (mainLabelIds.length === 0) return 'Any';
-    if (mainLabelIds.length === 1) return mainLabels.find((l) => l.id === mainLabelIds[0])?.name ?? '1 selected';
-    return `${mainLabelIds.length} selected`;
-  }, [mainLabelIds, mainLabels]);
+    if (mainLabelIds.length === 0) return t("Any");
+    if (mainLabelIds.length === 1) return mainLabels.find((l) => l.id === mainLabelIds[0])?.name ?? t("1 selected");
+    return t("{0} selected", mainLabelIds.length);
+  }, [mainLabelIds, mainLabels, t]);
 
   const secondarySummary = useMemo(() => {
-    if (secondaryIds.length === 0) return 'Any';
-    if (secondaryIds.length === 1) return secondaryLabels.find((l) => l.id === secondaryIds[0])?.name ?? '1 selected';
-    return `${secondaryIds.length} selected`;
-  }, [secondaryIds, secondaryLabels]);
+    if (secondaryIds.length === 0) return t("Any");
+    if (secondaryIds.length === 1) return secondaryLabels.find((l) => l.id === secondaryIds[0])?.name ?? t("1 selected");
+    return t("{0} selected", secondaryIds.length);
+  }, [secondaryIds, secondaryLabels, t]);
 
   function toggleId(list: string[], id: string): string[] {
     return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -110,14 +113,14 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
     <Dialog open={open} onOpenChange={(next) => { if (!isRendering) onOpenChange(next); }}>
       <DialogContent className="sm:max-w-[980px]">
         <DialogHeader>
-          <DialogTitle>Export Studio</DialogTitle>
-          <DialogDescription>Drag clips or use the arrows to set export order. Timeline # shows each clip’s original position. Uncheck clips to leave them out.</DialogDescription>
+          <DialogTitle>{t("Export Studio")}</DialogTitle>
+          <DialogDescription>{t("Drag clips or use the arrows to set export order. Timeline # shows each clip’s original position. Uncheck clips to leave them out.")}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <div className="text-xs font-medium text-muted-foreground">Main Label</div>
+              <div className="text-xs font-medium text-muted-foreground">{t("Main Label")}</div>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="h-9 justify-between">
@@ -127,9 +130,9 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                 </PopoverTrigger>
                 <PopoverContent className="w-[420px] p-0" align="start">
                   <Command>
-                    <CommandInput placeholder="Search main labels..." />
+                    <CommandInput placeholder={t("Search main labels...")} />
                     <CommandList>
-                      <CommandEmpty>No labels found.</CommandEmpty>
+                      <CommandEmpty>{t("No labels found.")}</CommandEmpty>
                       <CommandGroup>
                         <CommandItem
                           onSelect={() => setMainLabelIds([])}
@@ -137,7 +140,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                         >
                           <div className="flex items-center gap-2">
                             <span className={cn('h-4 w-4 rounded-sm border')} aria-hidden />
-                            <span>Any</span>
+                            <span>{t("Any")}</span>
                           </div>
                           {mainLabelIds.length === 0 ? <Check className="h-4 w-4" /> : null}
                         </CommandItem>
@@ -170,7 +173,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                         variant="secondary"
                         className="cursor-pointer"
                         onClick={() => setMainLabelIds((prev) => toggleId(prev, id))}
-                        title="Click to remove"
+                        title={t("Click to remove")}
                       >
                         {label.name}
                       </Badge>
@@ -184,7 +187,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             </div>
 
             <div className="grid gap-1.5">
-              <div className="text-xs font-medium text-muted-foreground">Secondary Label includes</div>
+              <div className="text-xs font-medium text-muted-foreground">{t("Secondary Label includes")}</div>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="h-9 justify-between">
@@ -194,12 +197,12 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                 </PopoverTrigger>
                 <PopoverContent className="w-[420px] p-0" align="start">
                   <Command>
-                    <CommandInput placeholder="Search secondary labels..." />
+                    <CommandInput placeholder={t("Search secondary labels...")} />
                     <CommandList>
-                      <CommandEmpty>No tags found.</CommandEmpty>
+                      <CommandEmpty>{t("No tags found.")}</CommandEmpty>
                       <CommandGroup>
                         <CommandItem onSelect={() => setSecondaryIds([])} className="flex items-center justify-between">
-                          <span>Any</span>
+                          <span>{t("Any")}</span>
                           {secondaryIds.length === 0 ? <Check className="h-4 w-4" /> : null}
                         </CommandItem>
                         {secondaryLabels.map((l) => {
@@ -235,7 +238,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                         variant="secondary"
                         className="cursor-pointer"
                         onClick={() => setSecondaryIds((prev) => toggleId(prev, id))}
-                        title="Click to remove"
+                        title={t("Click to remove")}
                       >
                         {label.name}
                       </Badge>
@@ -251,37 +254,35 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
           <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/10">
             <Checkbox id="add-gap" checked={addGap} onCheckedChange={(v) => setAddGap(!!v)} />
-            <Label htmlFor="add-gap" className="text-sm cursor-pointer">Add 0.5s black gap between clips</Label>
+            <Label htmlFor="add-gap" className="text-sm cursor-pointer">{t("Add 0.5s black gap between clips")}</Label>
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs text-muted-foreground">{selectedSegments.length} of {filtered.length} matching clips selected for export</div>
-            <Button variant="ghost" size="sm" disabled={isRendering || exportOrder?.projectId !== projectId} onClick={() => setExportOrder(null)}>Reset order</Button>
+            <div className="text-xs text-muted-foreground">{t("{0} of {1} matching clips selected for export", selectedSegments.length, filtered.length)}</div>
+            <Button variant="ghost" size="sm" disabled={isRendering || exportOrder?.projectId !== projectId} onClick={() => setExportOrder(null)}>{t("Reset order")}</Button>
           </div>
           <div className="max-h-[40vh] overflow-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[70px] whitespace-nowrap">Timeline #</TableHead>
-                  <TableHead className="w-[90px]">Order</TableHead>
-                  <TableHead className="w-[220px]">Clip / type</TableHead>
-                  <TableHead className="w-[100px]">Start</TableHead>
-                  <TableHead className="w-[100px]">End</TableHead>
-                  <TableHead>Secondary Tags</TableHead>
-                  <TableHead className="w-[70px] text-right">Include</TableHead>
+                  <TableHead className="w-[70px] whitespace-nowrap">{t("Timeline #")}</TableHead>
+                  <TableHead className="w-[90px]">{t("Order")}</TableHead>
+                  <TableHead className="w-[220px]">{t("Clip / type")}</TableHead>
+                  <TableHead className="w-[100px]">{t("Start")}</TableHead>
+                  <TableHead className="w-[100px]">{t("End")}</TableHead>
+                  <TableHead>{t("Secondary Tags")}</TableHead>
+                  <TableHead className="w-[70px] text-right">{t("Include")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
-                      No segments match the current filter.
-                    </TableCell>
+                    <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">{t("No segments match the current filter.")}</TableCell>
                   </TableRow>
                 ) : (
                   filtered.map((seg, index) => {
                     const timelineNumber = timelineNumbers.get(seg.id)!;
-                    const titles = getSegmentTitles(seg, mainLabels.find((l) => l.id === seg.mainLabelId));
+                    const titles = getSegmentTitles(seg, mainLabels.find((l) => l.id === seg.mainLabelId) ?? { name: t('Tag') });
                     const tags = seg.secondaryLabelIds
                       .map((id) => secondaryLabels.find((s) => s.id === id)?.name)
                       .filter(Boolean)
@@ -298,11 +299,11 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                           if (draggedId) moveSegment(draggedId, seg.id);
                           setDraggedId(null); setDropTargetId(null);
                         }}>
-                        <TableCell className="font-mono text-xs" aria-label={`Timeline position ${timelineNumber}`}>{timelineNumber}</TableCell>
+                        <TableCell className="font-mono text-xs" aria-label={t("Timeline position {0}", timelineNumber)}>{timelineNumber}</TableCell>
                         <TableCell>
                           <div className="flex items-center">
                             <Button size="icon" variant="ghost" className="h-7 w-6 cursor-grab active:cursor-grabbing"
-                              disabled={isRendering} draggable={!isRendering} aria-label={`Drag clip ${timelineNumber} to reorder`}
+                              disabled={isRendering} draggable={!isRendering} aria-label={t("Drag clip {0} to reorder", timelineNumber)}
                               onDragStart={(event) => {
                                 event.dataTransfer.setData('text/plain', seg.id); event.dataTransfer.effectAllowed = 'move'; setDraggedId(seg.id);
                               }}
@@ -310,9 +311,9 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                               <GripVertical className="h-4 w-4" aria-hidden />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-6" disabled={isRendering || index === 0}
-                              aria-label={`Move clip ${timelineNumber} up`} onClick={() => moveSegment(seg.id, filtered[index - 1].id)}><ArrowUp className="h-3 w-3" aria-hidden /></Button>
+                              aria-label={t("Move clip {0} up", timelineNumber)} onClick={() => moveSegment(seg.id, filtered[index - 1].id)}><ArrowUp className="h-3 w-3" aria-hidden /></Button>
                             <Button size="icon" variant="ghost" className="h-7 w-6" disabled={isRendering || index === filtered.length - 1}
-                              aria-label={`Move clip ${timelineNumber} down`} onClick={() => moveSegment(seg.id, filtered[index + 1].id)}><ArrowDown className="h-3 w-3" aria-hidden /></Button>
+                              aria-label={t("Move clip {0} down", timelineNumber)} onClick={() => moveSegment(seg.id, filtered[index + 1].id)}><ArrowDown className="h-3 w-3" aria-hidden /></Button>
                           </div>
                         </TableCell>
                         <TableCell className="font-medium"><div>{titles.primaryText}</div><div className="text-xs font-normal text-muted-foreground">{titles.secondaryText}</div></TableCell>
@@ -322,7 +323,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                         <TableCell>
                           <div className="flex justify-end pr-2">
                             <Checkbox
-                              aria-label={`Include ${titles.primaryText} at ${formatTimecode(seg.startTimeSec)} in export`}
+                              aria-label={t("Include {0} at {1} in export", titles.primaryText, formatTimecode(seg.startTimeSec))}
                               checked={!excludedSegmentIds.includes(seg.id)}
                               disabled={isRendering}
                               onCheckedChange={(checked) => setExcludedSegmentIds((prev) => checked
@@ -341,18 +342,18 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
           <div className="flex items-center justify-between">
             <div className="text-xs text-muted-foreground">
-              {activeVideoInput ? `Video loaded` : 'No video loaded. Upload a video to enable export.'}
+              {activeVideoInput ? t("Video loaded") : t("No video loaded. Upload a video to enable export.")}
             </div>
             <div className="flex items-center gap-2">
-              {error ? <div className="max-w-[520px] truncate text-xs text-destructive">{error}</div> : null}
+              {error ? <div className="max-w-[520px] truncate text-xs text-destructive">{message(error)}</div> : null}
               {phase ? (
                 <div className="w-[260px] space-y-1.5">
                   <div className="flex justify-between gap-2 text-xs text-muted-foreground" role="status">
-                    <span className="flex items-center gap-1.5">{isRendering && <LoaderCircle aria-hidden className="h-3 w-3 shrink-0 motion-safe:animate-spin" />}{error ? 'Export failed' : phase}</span>
+                    <span className="flex items-center gap-1.5">{isRendering && <LoaderCircle aria-hidden className="h-3 w-3 shrink-0 motion-safe:animate-spin" />}{error ? t("Export failed") : message(phase)}</span>
                     <span className="font-mono">{Math.floor(ratio * 100)}%</span>
                   </div>
-                  <div role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={100}
-                    aria-valuenow={Math.floor(ratio * 100)} aria-valuetext={error ? 'Export failed' : phase}
+                  <div role="progressbar" aria-label={t("Export progress")} aria-valuemin={0} aria-valuemax={100}
+                    aria-valuenow={Math.floor(ratio * 100)} aria-valuetext={error ? t("Export failed") : message(phase)}
                     className="h-2 overflow-hidden rounded-full bg-muted">
                     <div className={`h-full rounded-full transition-[width] duration-200 ${error ? 'bg-destructive' : 'bg-primary'}`}
                       style={{ width: `${ratio * 100}%` }} />
@@ -361,7 +362,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
               ) : null}
               {isRendering && <Button variant="outline" disabled={isCancelling} onClick={() => {
                 setIsCancelling(true); exportController.current?.abort();
-              }}>{isCancelling ? 'Cancelling…' : 'Cancel export'}</Button>}
+              }}>{isCancelling ? t("Cancelling…") : t("Cancel export")}</Button>}
               <Button
                 disabled={!activeVideoInput || selectedSegments.length === 0 || isRendering}
                 onClick={async () => {
@@ -377,7 +378,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     console.info('segments (selected)', selectedSegments.length);
                     const options = {
                       addGap, mainLabels, signal: controller.signal,
-                      onProgress: (p: string, r: number) => { if (controller.signal.aborted) return; setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
+                      onProgress: (p: string, r: number) => { if (controller.signal.aborted) return; setPhase(r >= 1 ? "Preparing download" : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
                     };
                     const blob = clips
                       ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), selectedSegments, options)
@@ -388,7 +389,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     setRatio(1);
                   } catch (e) {
                     if (controller.signal.aborted) { setPhase('Export cancelled'); setError(null); }
-                    else setError(e instanceof Error ? e.message : 'Export failed');
+                    else setError(e instanceof Error ? e.message : "Export failed");
                     console.error('[Export Studio] export failed', e);
                   } finally {
                     setIsRendering(false); setIsCancelling(false); exportController.current = null;
@@ -396,7 +397,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   }
                 }}
               >
-                {isRendering ? 'Rendering…' : 'Render MP4'}
+                {isRendering ? t("Rendering…") : t("Render MP4")}
               </Button>
             </div>
           </div>

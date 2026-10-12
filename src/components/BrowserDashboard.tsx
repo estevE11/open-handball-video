@@ -1,3 +1,5 @@
+import { LanguageSelector } from '@/components/app/LanguageSelector';
+import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +14,9 @@ import { openBrowserProject } from '@/lib/browserProjectSession';
 import { deleteBrowserProject, markBrowserProjectOpened, recommendSoftDelete, formatBytes, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, requestPersistentStorage, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
 
 export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
+  const t = useTranslation();
+  const language = useLanguageStore((s) => s.language);
+  const message = useTranslatedMessage();
   const [projects, setProjects] = useState<StoredProject[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -37,18 +42,21 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
   }, []);
 
   return <div className="flex h-screen flex-col gap-5 overflow-auto bg-background p-4 text-foreground md:p-8">
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div><h1 className="text-3xl font-bold">Open Handball Video</h1>
-        <p className="mt-2 text-muted-foreground">Add one video or several clips for a split match. Videos and projects stay in this browser.</p></div>
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={busy} onClick={() => videoInput.current?.click()}>Add video</Button>
-        <Button disabled={busy} variant="secondary" onClick={() => jsonInput.current?.click()}>Import project JSON</Button>
-        <Button disabled={busy} variant="outline" onClick={() => void run(refresh)}>Refresh</Button>
+    <header>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-3xl font-bold">Open Handball Video</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={busy} onClick={() => videoInput.current?.click()}>{t("Add video")}</Button>
+          <Button disabled={busy} variant="secondary" onClick={() => jsonInput.current?.click()}>{t("Import project JSON")}</Button>
+          <Button disabled={busy} variant="outline" onClick={() => void run(refresh)}>{t("Refresh")}</Button>
+          <LanguageSelector compact />
+        </div>
       </div>
-    </div>
+      <p className="mt-2 text-muted-foreground">{t("Add one video or several clips for a split match. Videos and projects stay in this browser.")}</p>
+    </header>
     <StorageStatus />
-    {error && <p role="alert" className="rounded-md border border-destructive p-3 text-sm">{error}</p>}
-    <input ref={videoInput} type="file" multiple accept="video/*,.mp4,.mov,.webm,.mkv" className="hidden" aria-label="Add video file" onChange={(event) => {
+    {error && <p role="alert" className="rounded-md border border-destructive p-3 text-sm">{message(error)}</p>}
+    <input ref={videoInput} type="file" multiple accept="video/*,.mp4,.mov,.webm,.mkv" className="hidden" aria-label={t("Add video file")} onChange={(event) => {
       const files = Array.from(event.target.files ?? []); event.target.value = '';
       if (!files.length) return;
       if (files.length > 1) {
@@ -64,7 +72,7 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
         openBrowserProject(data, file); onOpen();
       });
     }} />
-    <input ref={jsonInput} type="file" accept="application/json,.json" className="hidden" aria-label="Import project JSON file" onChange={(event) => {
+    <input ref={jsonInput} type="file" accept="application/json,.json" className="hidden" aria-label={t("Import project JSON file")} onChange={(event) => {
       const file = event.target.files?.[0]; event.target.value = '';
       if (!file) return;
       void run(async () => {
@@ -76,34 +84,34 @@ export function BrowserDashboard({ onOpen }: { onOpen: () => void }) {
       });
     }} />
     {!busy && projects.length === 0 && <div className="rounded-md border p-12 text-center text-muted-foreground">
-      <p>No saved projects yet.</p><p className="mt-2 text-sm">Add a video to start analyzing, or import an existing project JSON.</p>
+      <p>{t("No saved projects yet.")}</p><p className="mt-2 text-sm">{t("Add a video to start analyzing, or import an existing project JSON.")}</p>
     </div>}
-    {busy && <p role="status">Loading…</p>}
+    {busy && <p role="status">{t("Loading…")}</p>}
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {projects.map((project) => <Card key={project.id}>
         <CardHeader><CardTitle className="truncate text-base" title={project.name}>{project.name}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">{formatBytes(project.videoBytes + project.jsonBytes)} · {new Date(project.updatedAtMs).toLocaleDateString()}</p>
-          <p className="text-xs text-muted-foreground">Last opened: {project.lastOpenedAtMs ? new Date(project.lastOpenedAtMs).toLocaleDateString() : 'Not yet recorded'}</p>
-          {recommendSoftDelete(project) && <p className="rounded border border-amber-500/40 p-2 text-sm" role="note">Recommended to soft-delete: not opened for 30 days. Remove the videos to free space while keeping all project data.</p>}
-          {!project.videoBytes && <p className="text-sm text-muted-foreground">Video not stored. Project data kept. Choose the original video when opening this project.</p>}
+          <p className="text-sm text-muted-foreground">{formatBytes(project.videoBytes + project.jsonBytes)} · {new Date(project.updatedAtMs).toLocaleDateString(language)}</p>
+          <p className="text-xs text-muted-foreground">{t("Last opened:")}{' '}{project.lastOpenedAtMs ? new Date(project.lastOpenedAtMs).toLocaleDateString(language) : t("Not yet recorded")}</p>
+          {recommendSoftDelete(project) && <p className="rounded border border-amber-500/40 p-2 text-sm" role="note">{t("Recommended to soft-delete: not opened for 30 days. Remove the videos to free space while keeping all project data.")}</p>}
+          {!project.videoBytes && <p className="text-sm text-muted-foreground">{t("Video not stored. Project data kept. Choose the original video when opening this project.")}</p>}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void run(async () => {
               const { data, files } = await loadBrowserProject(project.id);
               await markBrowserProjectOpened(data.projectId);
               openBrowserProject(data, files.length ? files : undefined); onOpen();
-            })}>Open project</Button>
-            <Button disabled={busy} variant="outline" onClick={() => downloadProjectJson(coerceProjectData(JSON.parse(project.json)), `${project.name}.json`)}>Export JSON</Button>
+            })}>{t("Open project")}</Button>
+            <Button disabled={busy} variant="outline" onClick={() => downloadProjectJson(coerceProjectData(JSON.parse(project.json)), `${project.name}.json`)}>{t("Export JSON")}</Button>
             {project.videoBytes > 0 && <Button disabled={busy} variant="outline" onClick={() => {
-              if (window.confirm(`Remove the stored video clips for “${project.name}” to free ${formatBytes(project.videoBytes)}? All labels, segments, and settings will be kept. Keep your original video files to attach them again later.`)) {
+              if (window.confirm(t("Remove the stored video clips for “{0}” to free {1}? All labels, segments, and settings will be kept. Keep your original video files to attach them again later.", project.name, formatBytes(project.videoBytes)))) {
                 void run(async () => { await removeBrowserProjectVideo(project.id); await refresh(); });
               }
-            }}>{recommendSoftDelete(project) ? 'Soft-delete videos' : 'Remove video'}</Button>}
+            }}>{recommendSoftDelete(project) ? t("Soft-delete videos") : t("Remove video")}</Button>}
             <Button disabled={busy} variant="ghost" onClick={() => {
-              if (window.confirm(`Delete “${project.name}” and its stored video from this browser?`)) {
+              if (window.confirm(t("Delete “{0}” and its stored video from this browser?", project.name))) {
                 void run(async () => { await deleteBrowserProject(project.id); await refresh(); });
               }
-            }}>Delete project</Button>
+            }}>{t("Delete project")}</Button>
           </div>
         </CardContent>
       </Card>)}

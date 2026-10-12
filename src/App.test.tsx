@@ -5,6 +5,7 @@ import { File as NodeFile, Blob as NodeBlob } from 'node:buffer';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '@/App';
+import { readLanguage, translate, useLanguageStore } from '@/lib/i18n';
 import { useProjectStore } from '@/store/projectStore';
 import { deleteBrowserProject, listBrowserProjects, loadBrowserProject } from '@/lib/browserStorage';
 
@@ -25,10 +26,11 @@ beforeEach(async () => {
     persist: async () => true,
   } });
   localStorage.clear();
+  useLanguageStore.setState({ language: 'en' });
   useProjectStore.getState().resetProject();
   for (const project of await listBrowserProjects()) await deleteBrowserProject(project.id);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); useLanguageStore.setState({ language: 'en' }); });
 
 it('adds video, autosaves edits before immediate navigation, and restores project after remount', async () => {
   const app = render(<App />);
@@ -386,4 +388,44 @@ it('selects tagged ranges for review and skips to the next selected tag during p
   fireEvent.keyDown(window, { key: ']' }); expect(video.currentTime).toBe(28);
   fireEvent.click(screen.getByRole('button', { name: 'Stop review' }));
   expect(screen.getByRole('button', { name: 'Review 2 tags' })).toBeTruthy();
+});
+
+
+it.each(['es', 'ca'] as const)('switches the whole UI to %s from the library and back from video settings', async (language) => {
+  const app = render(<App />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add video' }).hasAttribute('disabled')).toBe(false));
+  const buttonName = language === 'es' ? 'Español' : 'Català';
+  fireEvent.click(screen.getByRole('button', { name: buttonName }));
+  expect(document.documentElement.lang).toBe(language);
+  expect(readLanguage()).toBe(language);
+  expect(screen.getByRole('button', { name: translate(language, 'Add video') })).toBeTruthy();
+  expect(screen.getByText(translate(language, 'Add one video or several clips for a split match. Videos and projects stay in this browser.'))).toBeTruthy();
+  app.unmount();
+  const reopened = render(<App />);
+  await waitFor(() => expect(screen.getByRole('button', { name: translate(language, 'Add video') }).hasAttribute('disabled')).toBe(false));
+  const file = new File(['test-video-bytes'], 'match.mp4', { type: 'video/mp4' });
+  fireEvent.change(screen.getByLabelText(translate(language, 'Add video file')), { target: { files: [file] } });
+  await screen.findByRole('button', { name: translate(language, 'Back to projects') });
+  expect(screen.getByRole('button', { name: translate(language, 'Play') })).toBeTruthy();
+  expect(screen.getByText(translate(language, 'Event Log'))).toBeTruthy();
+  expect(screen.getAllByText(translate(language, 'Attack')).length).toBeGreaterThan(0);
+  act(() => {
+    const state = useProjectStore.getState();
+    state.upsertMainLabel({ ...state.mainLabels[0], name: 'My custom attack' });
+    state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
+    state.renameSegment(useProjectStore.getState().segments[0].id, 'Custom clip title');
+  });
+  fireEvent.click(screen.getByRole('button', { name: translate(language, 'Labels & Settings') }));
+  fireEvent.mouseDown(screen.getByRole('tab', { name: translate(language, 'Settings') }), { button: 0, ctrlKey: false });
+  fireEvent.click(screen.getByRole('button', { name: 'English' }));
+  expect(document.documentElement.lang).toBe('en');
+  expect(readLanguage()).toBe('en');
+  expect(screen.getByRole('tab', { name: 'Settings' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
+  expect(useProjectStore.getState().mainLabels[0].name).toBe('My custom attack');
+  expect(useProjectStore.getState().segments[0].name).toBe('Custom clip title');
+  const projectId = useProjectStore.getState().projectId;
+  await waitFor(async () => expect((await loadBrowserProject(projectId)).data.segments[0].name).toBe('Custom clip title'));
+  reopened.unmount();
 });

@@ -1,3 +1,5 @@
+import { useLocalizedLabels } from '@/hooks/useLocalizedLabels';
+import { useTranslation } from '@/lib/i18n';
 import { ReviewControls } from './ReviewControls';
 import { useReviewStore } from '@/store/reviewStore';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
@@ -15,10 +17,10 @@ import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
 
 export function EventLogPanel() {
+  const t = useTranslation();
   const reviewIds = useReviewStore((s) => s.selectedIds);
   const segments = useProjectStore((s) => s.segments);
-  const mainLabels = useProjectStore((s) => s.mainLabels);
-  const secondaryLabels = useProjectStore((s) => s.secondaryLabels);
+  const { mainLabels, secondaryLabels } = useLocalizedLabels();
   const deleteSegment = useProjectStore((s) => s.deleteSegment);
   const createSegmentFromTrigger = useProjectStore((s) => s.createSegmentFromTrigger);
   const toggleSecondaryOnSelectedSegment = useProjectStore((s) => s.toggleSecondaryOnSelectedSegment);
@@ -49,7 +51,7 @@ export function EventLogPanel() {
 
   return (
     <Panel
-      title="Event Log"
+      title={t("Event Log")}
       className="min-h-0"
       right={
         <div className="flex items-center gap-1">
@@ -78,14 +80,12 @@ export function EventLogPanel() {
               <div className="flex items-center justify-between">
                 <div className="text-xs font-medium text-muted-foreground">
                   {selectedSegment ? (
-                    <span className="flex items-center gap-1.5">
-                      Target: 
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: selectedLabel?.color }} />
-                      <span className="text-foreground">{getSegmentTitles(selectedSegment, selectedLabel ?? undefined).primaryText}</span>
+                    <span className="flex items-center gap-1.5">{t("Target:")}<span className="h-2 w-2 rounded-full" style={{ backgroundColor: selectedLabel?.color }} />
+                      <span className="text-foreground">{getSegmentTitles(selectedSegment, selectedLabel ?? { name: t('Tag') }).primaryText}</span>
                       <span className="font-mono">({formatTimecode(selectedSegment.startTimeSec)})</span>
                     </span>
                   ) : (
-                    "Select a segment to add tags"
+                    t("Select a segment to add tags")
                   )}
                 </div>
               </div>
@@ -119,7 +119,7 @@ export function EventLogPanel() {
 
           {items.length === 0 ? (
             <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-              No segments yet. Load a video and press a label hotkey (e.g. <span className="font-mono">A</span>) to create one.
+              {t("No segments yet. Load a video and press a label hotkey (e.g. A) to create one.")}
             </div>
           ) : null}
 
@@ -143,7 +143,7 @@ export function EventLogPanel() {
                   setCurrentTimeSec(seg.startTimeSec);
                 }}
               >
-                <input type="checkbox" className="mt-1" aria-label={`Include ${getSegmentTitles(seg, label).primaryText} in review`}
+                <input type="checkbox" className="mt-1" aria-label={t("Include {0} in review", getSegmentTitles(seg, label ?? { name: t('Tag') }).primaryText)}
                   checked={reviewIds.includes(seg.id)} onClick={(event) => event.stopPropagation()}
                   onChange={() => useReviewStore.getState().toggle(seg.id)} />
                 <div
@@ -157,7 +157,7 @@ export function EventLogPanel() {
                     {editingSegmentId === seg.id ? (
                       <Input
                         autoFocus
-                        aria-label="Clip title"
+                        aria-label={t("Clip title")}
                         placeholder={label?.name}
                         value={tempSegmentName}
                         onChange={(e) => setTempSegmentName(e.target.value)}
@@ -185,14 +185,14 @@ export function EventLogPanel() {
                             setTempSegmentName(seg.name ?? label.name);
                           }
                         }}
-                        title="Double-click to rename this clip"
+                        title={t("Double-click to rename this clip")}
                       >
-                        {getSegmentTitles(seg, label).primaryText}
+                        {getSegmentTitles(seg, label ?? { name: t('Tag') }).primaryText}
                       </button>
                     )}
                     <Button
                       variant="ghost" size="icon" className="h-6 w-6 shrink-0"
-                      aria-label={`Rename clip ${getSegmentTitles(seg, label).primaryText}`}
+                      aria-label={t("Rename clip {0}", getSegmentTitles(seg, label ?? { name: t('Tag') }).primaryText)}
                       onClick={(event) => {
                         event.stopPropagation();
                         setEditingSegmentId(seg.id);
@@ -207,7 +207,7 @@ export function EventLogPanel() {
                   </div>
 
                   <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <span className="mr-1 text-xs text-muted-foreground">{label?.name ?? 'Unknown type'}</span>
+                    <span className="mr-1 text-xs text-muted-foreground">{label?.name ?? t("Unknown type")}</span>
                     {tags.length ? (
                       tags.map((t) => (
                         <Badge key={t} variant="secondary" className="h-5 px-1.5 text-[11px]">
@@ -215,7 +215,7 @@ export function EventLogPanel() {
                         </Badge>
                       ))
                     ) : (
-                      <span className="text-xs text-muted-foreground">No secondary tags</span>
+                      <span className="text-xs text-muted-foreground">{t("No secondary tags")}</span>
                     )}
                   </div>
                 </div>
@@ -228,7 +228,7 @@ export function EventLogPanel() {
                     e.stopPropagation();
                     deleteSegment(seg.id);
                   }}
-                  aria-label="Delete segment"
+                  aria-label={t("Delete segment")}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

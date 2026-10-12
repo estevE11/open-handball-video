@@ -1,3 +1,5 @@
+import { useLocalizedLabels } from '@/hooks/useLocalizedLabels';
+import { useTranslation } from '@/lib/i18n';
 import { Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -25,13 +27,14 @@ function niceTickEverySec(pps: number): number {
 }
 
 export function TimelinePanel() {
+  const t = useTranslation();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const tracksRef = useRef<HTMLDivElement | null>(null);
   const justDraggedRef = useRef(false);
   const dragMovedRef = useRef(false);
 
   const clips = useProjectStore((s) => s.clips);
-  const mainLabels = useProjectStore((s) => s.mainLabels);
+  const { mainLabels } = useLocalizedLabels();
   const segments = useProjectStore((s) => s.segments);
   const selectedSegmentId = useProjectStore((s) => s.selectedSegmentId);
   const setSelectedSegmentId = useProjectStore((s) => s.setSelectedSegmentId);
@@ -187,14 +190,14 @@ export function TimelinePanel() {
 
   return (
     <Panel
-      title="Timeline"
+      title={t("Timeline")}
       right={
         <div className="flex items-center gap-1">
           <div className="mr-2 hidden font-mono text-xs text-muted-foreground md:block">{formatTimecode(currentTimeSec)}</div>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setPps((v) => Math.max(20, v - 10))}>
+          <Button variant="outline" size="icon" className="h-7 w-7" aria-label={t('Zoom out')} onClick={() => setPps((v) => Math.max(20, v - 10))}>
             <Minus className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setPps((v) => Math.min(200, v + 10))}>
+          <Button variant="outline" size="icon" className="h-7 w-7" aria-label={t('Zoom in')} onClick={() => setPps((v) => Math.min(200, v + 10))}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -204,9 +207,7 @@ export function TimelinePanel() {
         <div style={{ width: LABEL_COL_W + timelineW, height: HEADER_H + trackH }} className="relative">
           {/* Header */}
           <div className="sticky top-0 z-20 flex h-[28px] bg-card">
-            <div className="sticky left-0 z-30 flex h-full w-[180px] items-center border-b border-r bg-card px-2 text-xs font-medium text-muted-foreground">
-              Labels
-            </div>
+            <div className="sticky left-0 z-30 flex h-full w-[180px] items-center border-b border-r bg-card px-2 text-xs font-medium text-muted-foreground">{t("Labels")}</div>
             <div className="relative h-full flex-1 border-b bg-card">
               {ticks.map((t) => (
                 <div
@@ -254,7 +255,7 @@ export function TimelinePanel() {
 
               {clips && clipOffsets(clips).slice(1).map(({ clip, start }) => <div key={clip.id}
                 className="pointer-events-none absolute top-0 h-full border-l border-dashed border-muted-foreground"
-                style={{ left: start * pps }} title={clip.fileName} aria-label={`Clip boundary: ${clip.fileName}`} />)}
+                style={{ left: start * pps }} title={clip.fileName} aria-label={t("Clip boundary: {0}", clip.fileName)} />)}
 
               {/* Cursor */}
               <div
@@ -281,7 +282,7 @@ export function TimelinePanel() {
                       isSelected ? "opacity-100 ring-2 ring-primary ring-offset-1 ring-offset-background z-20" : "opacity-90 hover:opacity-100"
                     )}
                     style={{ left, width, top, height: h, backgroundColor: label.color }}
-                    title={`${getSegmentTitles(seg, label).primaryText} · ${label.name} ${formatTimecode(seg.startTimeSec)} → ${formatTimecode(seg.endTimeSec)}`}
+                    title={`${getSegmentTitles(seg, label ?? { name: t('Tag') }).primaryText} · ${label.name} ${formatTimecode(seg.startTimeSec)} → ${formatTimecode(seg.endTimeSec)}`}
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       setSelectedSegmentId(seg.id);
@@ -311,7 +312,7 @@ export function TimelinePanel() {
                           originEnd: seg.endTimeSec,
                         });
                       }}
-                      aria-label="Resize segment start"
+                      aria-label={t("Resize segment start")}
                     />
                     <div
                       className="absolute right-0 top-0 h-full w-2 cursor-ew-resize"
@@ -328,7 +329,7 @@ export function TimelinePanel() {
                           originEnd: seg.endTimeSec,
                         });
                       }}
-                      aria-label="Resize segment end"
+                      aria-label={t("Resize segment end")}
                     />
 
                     {/* Drag body (move segment, keep duration) */}
@@ -349,11 +350,11 @@ export function TimelinePanel() {
                           originEnd: seg.endTimeSec,
                         });
                       }}
-                      aria-label="Move segment"
+                      aria-label={t("Move segment")}
                     />
 
                     <div className="pointer-events-none absolute inset-y-0 left-3 right-3 truncate text-[10px] leading-[22px] text-white">
-                      {getSegmentTitles(seg, label).primaryText}
+                      {getSegmentTitles(seg, label ?? { name: t('Tag') }).primaryText}
                     </div>
                     {/* Subtle grips */}
                     <div className="pointer-events-none absolute left-0 top-0 h-full w-2 opacity-30">

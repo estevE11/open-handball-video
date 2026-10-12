@@ -1,3 +1,4 @@
+import { useTranslation } from '@/lib/i18n';
 import { Undo2, Redo2, ChevronLeft, Download, Settings, Upload } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -14,6 +15,7 @@ type TopBarProps = {
 };
 
 export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }: TopBarProps) {
+  const t = useTranslation();
 
   const canUndo = useProjectStore((s) => s.past.length > 0);
   const canRedo = useProjectStore((s) => s.future.length > 0);
@@ -46,17 +48,17 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
     <div className="flex h-12 items-center gap-2 border-b bg-card px-2">
       <div className="flex items-center gap-2">
         {showBackButton && (
-          <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back to projects" className="mr-1 h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" onClick={onBack} aria-label={t("Back to projects")} className="mr-1 h-8 w-8 p-0">
             <ChevronLeft className="h-4 w-4" />
           </Button>
         )}
         <div className="text-sm font-semibold tracking-tight">Open Handball Video</div>
-        <div className="text-xs text-muted-foreground">Sports Video Analysis Tool</div>
+        <div className="text-xs text-muted-foreground">{t("Sports Video Analysis Tool")}</div>
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button variant="ghost" size="icon" aria-label="Undo edit" title="Undo (Ctrl/Cmd+Z)" disabled={!canUndo} onClick={() => useProjectStore.getState().undo()}><Undo2 className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" aria-label="Redo edit" title="Redo (Ctrl/Cmd+Shift+Z)" disabled={!canRedo} onClick={() => useProjectStore.getState().redo()}><Redo2 className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" aria-label={t("Undo edit")} title={t("Undo (Ctrl/Cmd+Z)")} disabled={!canUndo} onClick={() => useProjectStore.getState().undo()}><Undo2 className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" aria-label={t("Redo edit")} title={t("Redo (Ctrl/Cmd+Shift+Z)")} disabled={!canRedo} onClick={() => useProjectStore.getState().redo()}><Redo2 className="h-4 w-4" /></Button>
         {!window.electron && (
           <>
             <Button
@@ -67,23 +69,17 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
                 downloadTextFile(filename, exportProjectJson(), 'application/json');
               }}
             >
-              <Download className="mr-2 h-4 w-4" />
-              Export JSON
-            </Button>
+              <Download className="mr-2 h-4 w-4" />{t("Export JSON")}</Button>
 
             <Separator orientation="vertical" className="mx-1 h-6" />
           </>
         )}
 
         <Button variant="outline" size="sm" onClick={onOpenExport}>
-          <Upload className="mr-2 h-4 w-4" />
-          Export Studio
-        </Button>
+          <Upload className="mr-2 h-4 w-4" />{t("Export Studio")}</Button>
 
         <Button variant="outline" size="sm" onClick={onOpenSettings}>
-          <Settings className="mr-2 h-4 w-4" />
-          Labels & Settings
-        </Button>
+          <Settings className="mr-2 h-4 w-4" />{t("Labels & Settings")}</Button>
 
         <Button
           variant="ghost"
@@ -92,9 +88,7 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
             if (onBack) onBack();
             else { resetProject(); resetVideoRuntime(); }
           }}
-        >
-          New
-        </Button>
+        >{t("New")}</Button>
       </div>
     </div>
   );

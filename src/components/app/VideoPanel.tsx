@@ -1,3 +1,4 @@
+import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { advanceReviewAt, useReviewStore } from '@/store/reviewStore';
 import { Pause, Play, SkipBack, SkipForward, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,6 +18,8 @@ import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
 
 export function VideoPanel() {
+  const t = useTranslation();
+  const message = useTranslatedMessage();
   const reviewing = useReviewStore((s) => s.active);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -132,7 +135,7 @@ export function VideoPanel() {
   };
 
   return (
-    <Panel title="Player" right={right}>
+    <Panel title={t("Player")} right={right}>
       <div className="grid h-full min-h-0 min-w-0 grid-rows-[1fr_auto] gap-2 p-2">
         <div className={cn('relative min-h-0 overflow-hidden rounded-md border bg-black')}>
           {activeUrl ? (
@@ -176,12 +179,10 @@ export function VideoPanel() {
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <div className="flex flex-col items-center gap-2 text-center">
-                <div className="text-sm font-medium text-white">No video loaded</div>
-                <div className="text-xs text-white/70">Upload a local video file to start labeling.</div>
+                <div className="text-sm font-medium text-white">{t("No video loaded")}</div>
+                <div className="text-xs text-white/70">{t("Upload a local video file to start labeling.")}</div>
                 <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload video…
-                </Button>
+                  <Upload className="mr-2 h-4 w-4" />{t("Upload video…")}</Button>
               </div>
             </div>
           )}
@@ -198,7 +199,7 @@ export function VideoPanel() {
               try {
                 if (window.electron) setVideoFile(file, URL.createObjectURL(file));
                 else await attachBrowserVideo(file);
-              } catch (err) { window.alert(storageError(err)); return; }
+              } catch (err) { window.alert(message(storageError(err))); return; }
               // Detect FPS via ffprobe (async). Only apply if this is still the active file.
               try {
                 const fps = await probeVideoFps(file);
@@ -213,20 +214,20 @@ export function VideoPanel() {
         </div>
 
         <div className="rounded-md border bg-card p-2">
-          {playbackError && <p role="alert" className="mb-2 text-xs text-destructive">{playbackError}</p>}
+          {playbackError && <p role="alert" className="mb-2 text-xs text-destructive">{message(playbackError)}</p>}
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="icon" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? 'Pause' : 'Play'}>
+            <Button variant="secondary" size="icon" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? t("Pause") : t("Play")}>
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
 
-            <Button variant="outline" size="icon" onClick={() => stepVideoFrame(-1)} aria-label="Frame backward" title="Previous frame (,)">
+            <Button variant="outline" size="icon" onClick={() => stepVideoFrame(-1)} aria-label={t("Frame backward")} title={t("Previous frame (,)")}>
               <SkipBack className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" onClick={() => stepVideoFrame(1)} aria-label="Frame forward" title="Next frame (.)">
+            <Button variant="outline" size="icon" onClick={() => stepVideoFrame(1)} aria-label={t("Frame forward")} title={t("Next frame (.)")}>
               <SkipForward className="h-4 w-4" />
             </Button>
 
-            <Button variant="ghost" size="icon" onClick={() => setIsMuted(!isMuted)} aria-label={isMuted ? 'Unmute' : 'Mute'}>
+            <Button variant="ghost" size="icon" onClick={() => setIsMuted(!isMuted)} aria-label={isMuted ? t("Unmute") : t("Mute")}>
               {isMuted ? <VolumeX className="h-4 w-4 text-destructive" /> : <Volume2 className="h-4 w-4" />}
             </Button>
 
@@ -265,8 +266,8 @@ export function VideoPanel() {
               onValueChange={(v) => setPlaybackRate((Number(v) as 0.5 | 1 | 2 | 2.5 | 3) ?? 1)}
               disabled={!videoSourceUrl}
             >
-              <SelectTrigger aria-label="Playback speed" className="h-8 w-[110px]">
-                <SelectValue placeholder="Speed" />
+              <SelectTrigger aria-label={t("Playback speed")} className="h-8 w-[110px]">
+                <SelectValue placeholder={t("Speed")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="0.5">0.5×</SelectItem>
@@ -278,7 +279,7 @@ export function VideoPanel() {
             </Select>
 
             {videoMeta?.fileName ? (
-              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{activeClip ? `Clip ${clipIndex + 1}/${clips?.length}: ${activeClip.clip.fileName}` : videoMeta.fileName}</div>
+              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{activeClip ? t("Clip {0}/{1}: {2}", clipIndex + 1, clips?.length ?? 0, activeClip.clip.fileName) : videoMeta.fileName}</div>
             ) : null}
           </div>
         </div>

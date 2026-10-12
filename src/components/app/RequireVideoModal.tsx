@@ -1,3 +1,4 @@
+import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { useMemo, useRef, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +9,8 @@ import { probeVideoFps } from '@/lib/videoProbe';
 import { useProjectStore } from '@/store/projectStore';
 
 export function RequireVideoModal({ onBack }: { onBack: () => void }) {
+  const t = useTranslation();
+  const message = useTranslatedMessage();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const hydrated = useProjectStore((s) => s.session.hydrated);
@@ -22,22 +25,20 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
   const open = hydrated && !hasVideoFile;
 
   const subtitle = useMemo(() => {
-    if (clips) return `Choose all ${clips.length} original clips. Their saved order and tags will be restored.`;
-    if (!videoMeta) return 'Upload a video file to start.';
-    return `Select the original video for this saved project: ${videoMeta.fileName}`;
-  }, [videoMeta, clips]);
+    if (clips) return t("Choose all {0} original clips. Their saved order and tags will be restored.", clips.length);
+    if (!videoMeta) return t("Upload a video file to start.");
+    return t("Select the original video for this saved project: {0}", videoMeta.fileName);
+  }, [videoMeta, clips, t]);
 
   return (
     <Dialog open={open}>
       <DialogContent className="sm:max-w-[560px]" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>Attach project video</DialogTitle>
+          <DialogTitle>{t("Attach project video")}</DialogTitle>
           <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-md border bg-muted/30 p-3 text-sm">
-          This project has no video saved in this browser. Select the original file or clips; it will be stored with the project for future visits.
-        </div>
+        <div className="rounded-md border bg-muted/30 p-3 text-sm">{t("This project has no video saved in this browser. Select the original file or clips; it will be stored with the project for future visits.")}</div>
 
         {clips && <ol className="max-h-40 list-inside list-decimal overflow-auto text-sm text-muted-foreground">
           {clips.map((clip) => <li key={clip.id}>{clip.fileName}</li>)}
@@ -72,10 +73,10 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
         />
 
         <div className="flex justify-end gap-2">
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <Button disabled={busy} variant="ghost" onClick={onBack}>Back to projects</Button>
+          {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
+          <Button disabled={busy} variant="ghost" onClick={onBack}>{t("Back to projects")}</Button>
           <Button disabled={busy} variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            {clips ? 'Choose original clips…' : 'Choose video…'}
+            {clips ? t("Choose original clips…") : t("Choose video…")}
           </Button>
         </div>
       </DialogContent>

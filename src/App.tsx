@@ -1,3 +1,4 @@
+import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { EventLogPanel } from '@/components/app/EventLogPanel';
 import { ExportStudioModal } from '@/components/app/ExportStudioModal';
@@ -29,6 +30,9 @@ function saveProject(data: ProjectData) {
 }
 
 export default function App() {
+  const t = useTranslation();
+  const language = useLanguageStore((s) => s.language);
+  const message = useTranslatedMessage();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
@@ -40,6 +44,7 @@ export default function App() {
   useGlobalHotkeys();
 
   useEffect(() => { document.documentElement.classList.add('dark'); }, []);
+  useEffect(() => { document.documentElement.lang = language; }, [language]);
 
   // Subscribe immediately so even an edit followed by navigation is saved.
   // Serialize writes so older snapshots can never finish after newer ones.
@@ -53,7 +58,7 @@ export default function App() {
       setSaveStatus('Saving…');
       void saveProject(data).then(() => {
         saveFailed.current = false;
-        if (active) { setSaveError(''); setSaveStatus(pending > 1 ? 'Saving…' : 'Saved'); }
+        if (active) { setSaveError(''); setSaveStatus(pending > 1 ? "Saving…" : "Saved"); }
       }).catch((err: unknown) => {
         saveFailed.current = true;
         if (active) { setSaveError(storageError(err)); setSaveStatus('Not saved'); }
@@ -85,11 +90,11 @@ export default function App() {
       <TopBar onOpenSettings={() => setSettingsOpen(true)} onOpenExport={() => setExportOpen(true)} showBackButton onBack={() => void backToLibrary()} />
       {!window.electron && <StorageStatus />}
       <div className="px-3 py-1 text-xs" role={saveError ? 'alert' : 'status'}>
-        {saveError || saveStatus}
+        {message(saveError || saveStatus)}
         {saveError && <button className="ml-3 underline" onClick={() => {
           // Trigger the same tracked save path, including unload protection.
           useProjectStore.setState({ updatedAtMs: Date.now() });
-        }}>Retry save</button>}
+        }}>{t("Retry save")}</button>}
       </div>
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 p-2">
         <div className="grid min-h-0 min-w-0 grid-cols-[minmax(260px,420px)_minmax(0,1fr)] gap-2">
