@@ -3,6 +3,7 @@ import { flushLabelSets, loadLabelSets, updateLabelSetLabels, useLabelSetStore }
 import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { EventLogPanel } from '@/components/app/EventLogPanel';
+import { AnalysisLayout } from '@/components/app/AnalysisLayout';
 import { ExportStudioModal } from '@/components/app/ExportStudioModal';
 import { RequireVideoModal } from '@/components/app/RequireVideoModal';
 import { SettingsModal } from '@/components/app/SettingsModal';
@@ -131,12 +132,7 @@ export default function App() {
           useProjectStore.setState({ updatedAtMs: Date.now() });
         }}>{t("Retry save")}</button>}
       </div>
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 p-2">
-        <div className="grid min-h-0 min-w-0 grid-cols-[minmax(260px,420px)_minmax(0,1fr)] gap-2">
-          <EventLogPanel /><VideoPanel />
-        </div>
-        <TimelinePanel />
-      </div>
+      <AnalysisLayout sidebar={<EventLogPanel />} player={<VideoPanel />} timeline={<TimelinePanel />} />
       <RequireVideoModal onBack={() => void backToLibrary()} />
       <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
       <ExportStudioModal open={exportOpen} onOpenChange={setExportOpen} />

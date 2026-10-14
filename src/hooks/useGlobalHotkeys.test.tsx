@@ -24,7 +24,7 @@ function focusedControl(role?: string) {
   return button;
 }
 
-it.each(['combobox', 'slider', undefined])('keeps playback shortcuts in control when a %s has focus', (role) => {
+it.each(['combobox', 'slider', 'separator', undefined])('keeps playback shortcuts in control when a %s has focus', (role) => {
   renderHook(useGlobalHotkeys);
   const control = focusedControl(role);
   const nativeHandler = vi.fn();

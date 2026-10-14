@@ -251,5 +251,9 @@
   "Drag labels or use the arrows to change their order.": "Arrastra las etiquetas o usa las flechas para cambiar su orden.",
   "Drag label {0} to reorder": "Arrastra la etiqueta {0} para reordenar",
   "Move label {0} up": "Subir etiqueta {0}",
-  "Move label {0} down": "Bajar etiqueta {0}"
+  "Move label {0} down": "Bajar etiqueta {0}",
+  "Resize sidebar": "Cambiar el ancho de la barra lateral",
+  "Resize timeline": "Cambiar la altura de la línea de tiempo",
+  "Drag to resize. Alt + arrow keys resize; double-click resets.": "Arrastra para cambiar el tamaño. Alt + flechas cambia el tamaño; doble clic lo restablece.",
+  "Timeline tracks": "Pistas de la línea de tiempo"
 }

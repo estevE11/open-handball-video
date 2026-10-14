@@ -53,8 +53,9 @@ export function EventLogPanel() {
     <Panel
       title={t("Event Log")}
       className="min-h-0"
+      headerClassName="h-auto min-h-10 flex-wrap gap-2 py-2"
       right={
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {mainLabels.filter((label) => !label.archived).slice(0, 3).map((l) => (
             <Button
               key={l.id}
@@ -240,5 +241,4 @@ export function EventLogPanel() {
     </Panel>
   );
 }
-
 

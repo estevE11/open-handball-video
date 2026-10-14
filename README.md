@@ -36,7 +36,7 @@ Playback speeds are 0.5×, 1×, 2×, 2.5×, and 3×. Tap Space to play or pause.
 
 Use a clip's pencil button or double-click its title to rename that individual event. Clearing the title restores its tag type as the default. Renaming keeps the tag type and all sibling clips unchanged. Exported videos show the individual name at 44 px and its type underneath at 22 px; Export Studio previews both. Shared type names remain editable in Settings. Names already changed globally by older versions can be corrected there; the old data does not record which individual clip was intended.
 
-The timeline fits its header and label rows, with no reserved empty space. Its height is capped at 320 px or 40% of the viewport, whichever is smaller, and additional rows scroll.
+Drag the divider above the timeline to resize its height, or the divider beside the event log to resize the sidebar width. The timeline starts at two label rows tall and scrolls vertically when more labels are present, so adding labels does not shrink the video. Its minimum height is 156 px, including the headers and scrollbar; the sidebar has a 320 px minimum width. Resizing preserves room for the player. Pane sizes are remembered on this browser or device. Double-click a divider to reset it, or focus it and use Alt + arrow keys to resize (Alt + Shift + arrows for larger steps). Small windows scroll the workspace rather than hiding controls.
 
 ## Split matches
 

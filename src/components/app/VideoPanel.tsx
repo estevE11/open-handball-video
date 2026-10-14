@@ -136,7 +136,7 @@ export function VideoPanel() {
 
   return (
     <Panel title={t("Player")} right={right}>
-      <div className="grid h-full min-h-0 min-w-0 grid-rows-[1fr_auto] gap-2 p-2">
+      <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto] gap-2 p-2">
         <div className={cn('relative min-h-0 overflow-hidden rounded-md border bg-black')}>
           {activeUrl ? (
             <video
@@ -233,7 +233,7 @@ export function VideoPanel() {
 
             <div className="mx-2 h-6 w-px bg-border" />
 
-            <div className="relative min-w-0 flex-1" ref={sliderRef} onMouseMove={handleSliderMouseMove} onMouseLeave={() => setHoverTime(null)}>
+            <div className="relative min-w-[48px] flex-1" ref={sliderRef} onMouseMove={handleSliderMouseMove} onMouseLeave={() => setHoverTime(null)}>
               {hoverTime !== null && (
                 <div 
                   className="absolute bottom-full mb-2 -translate-x-1/2 pointer-events-none z-50 px-2 py-1 bg-popover text-popover-foreground border rounded shadow-md text-[10px] font-mono whitespace-nowrap transition-opacity duration-150"
@@ -279,7 +279,7 @@ export function VideoPanel() {
             </Select>
 
             {videoMeta?.fileName ? (
-              <div className="ml-2 hidden max-w-[260px] truncate text-xs text-muted-foreground md:block">{activeClip ? t("Clip {0}/{1}: {2}", clipIndex + 1, clips?.length ?? 0, activeClip.clip.fileName) : videoMeta.fileName}</div>
+              <div className="ml-2 hidden min-w-0 max-w-[260px] truncate text-xs text-muted-foreground md:block">{activeClip ? t("Clip {0}/{1}: {2}", clipIndex + 1, clips?.length ?? 0, activeClip.clip.fileName) : videoMeta.fileName}</div>
             ) : null}
           </div>
         </div>
@@ -287,5 +287,3 @@ export function VideoPanel() {
     </Panel>
   );
 }
-
-

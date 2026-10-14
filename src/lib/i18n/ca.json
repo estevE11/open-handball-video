@@ -251,5 +251,9 @@
   "Drag labels or use the arrows to change their order.": "Arrossega les etiquetes o fes servir les fletxes per canviar-ne l’ordre.",
   "Drag label {0} to reorder": "Arrossega l’etiqueta {0} per reordenar",
   "Move label {0} up": "Mou l’etiqueta {0} amunt",
-  "Move label {0} down": "Mou l’etiqueta {0} avall"
+  "Move label {0} down": "Mou l’etiqueta {0} avall",
+  "Resize sidebar": "Canvia l’amplada de la barra lateral",
+  "Resize timeline": "Canvia l’alçada de la línia de temps",
+  "Drag to resize. Alt + arrow keys resize; double-click resets.": "Arrossega per canviar la mida. Alt + fletxes canvia la mida; doble clic la restableix.",
+  "Timeline tracks": "Pistes de la línia de temps"
 }

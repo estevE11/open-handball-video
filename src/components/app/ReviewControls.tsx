@@ -14,7 +14,7 @@ export function ReviewControls() {
   const selectedCount = segments.filter((seg) => review.selectedIds.includes(seg.id)).length;
   return <div className="space-y-2 rounded-md border p-2">
     <div className="flex flex-wrap items-center gap-2">
-      <select aria-label={t("Review tag type")} className="h-8 rounded border bg-background px-2 text-xs" value={type} onChange={(event) => setType(event.target.value)}>
+      <select aria-label={t("Review tag type")} className="h-8 max-w-full rounded border bg-background px-2 text-xs" value={type} onChange={(event) => setType(event.target.value)}>
         <option value="">{t("All types")}</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
       </select>
       <Button size="sm" variant="outline" onClick={() => review.select(segments.filter((seg) => !type || seg.mainLabelId === type).map((seg) => seg.id))}>{t("Select tags")}</Button>

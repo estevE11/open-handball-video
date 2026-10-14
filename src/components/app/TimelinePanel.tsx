@@ -191,6 +191,7 @@ export function TimelinePanel() {
   return (
     <Panel
       title={t("Timeline")}
+      className="h-full overflow-hidden"
       right={
         <div className="flex items-center gap-1">
           <div className="mr-2 hidden font-mono text-xs text-muted-foreground md:block">{formatTimecode(currentTimeSec)}</div>
@@ -203,7 +204,7 @@ export function TimelinePanel() {
         </div>
       }
     >
-      <div ref={scrollRef} className="min-w-0 overflow-auto" style={{ maxHeight: 'min(278px, calc(40vh - 42px))' }}>
+      <div ref={scrollRef} className="h-full min-w-0 overflow-auto" aria-label={t('Timeline tracks')}>
         <div style={{ width: LABEL_COL_W + timelineW, height: HEADER_H + trackH }} className="relative">
           {/* Header */}
           <div className="sticky top-0 z-20 flex h-[28px] bg-card">
@@ -373,5 +374,4 @@ export function TimelinePanel() {
     </Panel>
   );
 }
-
 
