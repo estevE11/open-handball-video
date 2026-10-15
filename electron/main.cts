@@ -91,6 +91,13 @@ function getLabelLibrary() {
 }
 ipcMain.handle('get-label-sets', async () => (await getLabelLibrary()).list());
 ipcMain.handle('save-label-set', async (_event, raw: unknown) => (await getLabelLibrary()).save(raw));
+let catalogStorage: Promise<ReturnType<typeof import('./catalogStorage.js').createCatalogStorage>> | undefined;
+function getCatalogStorage() {
+  catalogStorage ??= import('./catalogStorage.js').then(({ createCatalogStorage }) => createCatalogStorage(getSavesFolderPath()));
+  return catalogStorage;
+}
+ipcMain.handle('get-library-catalog', async () => (await getCatalogStorage()).read());
+ipcMain.handle('change-library-catalog', async (_event, change: unknown) => (await getCatalogStorage()).change(change));
 
 ipcMain.handle('get-videos', async () => {
   try {
@@ -122,13 +129,18 @@ ipcMain.handle('get-videos', async () => {
   }
 });
 
+function projectSavePath(key: unknown) {
+  if (typeof key !== 'string' || !key || key === '.' || key === '..' || /[\\/\0]/.test(key) || ['label-sets', 'library-catalog'].includes(key)) throw new Error('Invalid desktop project key.');
+  return path.join(getSavesFolderPath(), `${key}.json`);
+}
+const projectWrites = new Map<string, Promise<void>>();
 ipcMain.handle('load-project', async (_event, videoFileName) => {
   try {
     ensureFoldersExist();
     // videoFileName is expected to be "match.mp4"
     // We look for ".saves/match.mp4.json"
-    const saveFileName = `${videoFileName}.json`;
-    const savePath = path.join(getSavesFolderPath(), saveFileName);
+    const savePath = projectSavePath(videoFileName);
+    await projectWrites.get(savePath)?.catch(() => {});
 
     if (fs.existsSync(savePath)) {
       const data = await fs.promises.readFile(savePath, 'utf-8');
@@ -145,11 +157,13 @@ ipcMain.handle('load-project', async (_event, videoFileName) => {
 ipcMain.handle('save-project', async (_event, videoFileName, projectData) => {
   try {
     ensureFoldersExist();
-    const saveFileName = `${videoFileName}.json`;
-    const savePath = path.join(getSavesFolderPath(), saveFileName);
-    
-    // Write nicely formatted JSON
-    await fs.promises.writeFile(savePath, JSON.stringify(projectData, null, 2), 'utf-8');
+    const savePath = projectSavePath(videoFileName);
+    const write = (projectWrites.get(savePath) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      await fs.promises.writeFile(savePath + '.tmp', JSON.stringify(projectData, null, 2), 'utf-8');
+      await fs.promises.rename(savePath + '.tmp', savePath);
+    });
+    projectWrites.set(savePath, write);
+    try { await write; } finally { if (projectWrites.get(savePath) === write) projectWrites.delete(savePath); }
     return true;
   } catch (error) {
     console.error(`Error saving project for ${videoFileName}:`, error);
@@ -194,7 +208,7 @@ async function readSavedProjects() {
   ensureFoldersExist();
   const files = await fs.promises.readdir(getSavesFolderPath());
   const projects: Record<string, unknown>[] = [];
-  for (const file of files.filter((name) => name.endsWith('.json') && name !== 'label-sets.json')) {
+  for (const file of files.filter((name) => name.endsWith('.json') && !['label-sets.json', 'library-catalog.json'].includes(name))) {
     try {
       const data: unknown = JSON.parse(await fs.promises.readFile(path.join(getSavesFolderPath(), file), 'utf8'));
       if (data && typeof data === 'object' && !Array.isArray(data)) projects.push(data as Record<string, unknown>);

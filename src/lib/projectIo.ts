@@ -1,4 +1,5 @@
 import type { ProjectData } from '@/types/project';
+import { coerceMatchMetadata } from '../../electron/libraryCatalog';
 import { PROJECT_SCHEMA_VERSION, createEmptyProject } from '@/lib/projectDefaults';
 
 export function downloadTextFile(filename: string, contents: string, mimeType: string) {
@@ -70,6 +71,9 @@ export function coerceProjectData(raw: unknown): ProjectData {
   if (data.labelSetId !== undefined && (typeof data.labelSetId !== 'string' || !data.labelSetId)) {
     throw new Error('Invalid project label set.');
   }
+  if (data.name !== undefined && (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 200)) throw new Error('Enter a video name.');
+  if (data.folderId !== undefined && data.folderId !== null && (typeof data.folderId !== 'string' || !data.folderId)) throw new Error('Invalid folder.');
+  const match = data.match === undefined ? undefined : coerceMatchMetadata(data.match);
   if (data.electronProjectKey !== undefined && (typeof data.electronProjectKey !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(data.electronProjectKey))) {
     throw new Error('Invalid desktop project key.');
   }
@@ -79,6 +83,9 @@ export function coerceProjectData(raw: unknown): ProjectData {
     projectId: data.projectId,
     createdAtMs: data.createdAtMs,
     updatedAtMs: data.updatedAtMs,
+    ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+    ...(data.folderId !== undefined ? { folderId: data.folderId } : {}),
+    ...(match ? { match } : {}),
     videoMeta: data.videoMeta,
     ...(data.electronProjectKey ? { electronProjectKey: data.electronProjectKey } : {}),
     ...(data.clips ? { clips: data.clips } : {}),

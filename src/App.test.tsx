@@ -3,17 +3,21 @@
 import 'fake-indexeddb/auto';
 import { File as NodeFile, Blob as NodeBlob } from 'node:buffer';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { within } from '@testing-library/react';
+import { applyLibraryChange, type LibraryCatalog } from '../electron/libraryCatalog';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '@/App';
 import { readLanguage, translate, useLanguageStore } from '@/lib/i18n';
 import { useProjectStore } from '@/store/projectStore';
 import { loadLabelSets, flushLabelSets, useLabelSetStore } from '@/store/labelSetStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { deleteBrowserProject, listBrowserProjects, loadBrowserProject } from '@/lib/browserStorage';
 
 vi.mock('@/lib/videoProbe', () => ({ probeVideoFps: async () => 30 }));
 vi.mock('@/lib/exportMp4', () => ({ exportFilteredSegmentsToMp4: vi.fn() }));
 
 beforeEach(async () => {
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   vi.stubGlobal('File', NodeFile);
   vi.stubGlobal('Blob', NodeBlob);
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -29,22 +33,24 @@ beforeEach(async () => {
   await loadLabelSets().catch(() => {});
   await flushLabelSets().catch(() => {});
   await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.open('ohv.library.v1', 2);
+    const request = indexedDB.open('ohv.library.v1', 3);
     request.onupgradeneeded = () => {
       const db = request.result;
-      for (const [name, options] of [['projects', { keyPath: 'id' }], ['videos', undefined], ['labelSets', { keyPath: 'id' }]] as const) {
+      for (const [name, options] of [['projects', { keyPath: 'id' }], ['videos', undefined], ['labelSets', { keyPath: 'id' }], ['catalog', undefined]] as const) {
         if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, options);
       }
     };
     request.onsuccess = () => {
-      const db = request.result; const tx = db.transaction('labelSets', 'readwrite');
+      const db = request.result; const tx = db.transaction(['labelSets', 'catalog'], 'readwrite');
       tx.objectStore('labelSets').clear();
+      tx.objectStore('catalog').clear();
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onabort = () => { db.close(); reject(tx.error); };
     };
     request.onerror = () => reject(request.error);
   });
   useLabelSetStore.setState({ sets: [], loaded: false, pending: 0, error: '' });
+  useLibraryStore.setState({ catalog: { folders: [], teams: [] }, loaded: false, backend: null, error: '' });
   localStorage.clear();
   useLanguageStore.setState({ language: 'en' });
   useProjectStore.getState().resetProject();
@@ -64,7 +70,17 @@ async function enterVideo() {
       || screen.queryByRole('button', { name: translate(language, 'Back to projects') })).toBeTruthy();
   });
   if (screen.queryByRole('dialog', { name: translate(language, 'Choose a label set') })) await chooseDefaultSet();
+  await waitFor(() => expect(screen.queryByRole('button', { name: translate(language, 'Create video') }) || screen.queryByRole('button', { name: translate(language, 'Back to projects') })).toBeTruthy());
+  if (screen.queryByRole('button', { name: translate(language, 'Create video') })) await finishCreation();
   await screen.findByRole('button', { name: translate(language, 'Back to projects') });
+}
+async function finishCreation() {
+  fireEvent.click(await screen.findByRole('button', { name: translate(useLanguageStore.getState().language, 'Create video') }));
+}
+async function clickVideoTitle(name: string) {
+  const title = await screen.findByText(name);
+  await waitFor(() => expect(title.closest('button')!.hasAttribute('disabled')).toBe(false));
+  fireEvent.click(title);
 }
 
 it('adds video, autosaves edits before immediate navigation, and restores project after remount', async () => {
@@ -128,12 +144,14 @@ it('confirms video removal and reattaches the original file without losing analy
   });
   const id = useProjectStore.getState().projectId;
   fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for archive.mp4' }));
   await screen.findByRole('button', { name: 'Remove video' });
   const before = (await loadBrowserProject(id)).data;
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   fireEvent.click(screen.getByRole('button', { name: 'Remove video' }));
   expect((await loadBrowserProject(id)).file?.size).toBe(file.size);
   confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for archive.mp4' }));
   fireEvent.click(screen.getByRole('button', { name: 'Remove video' }));
   await screen.findByText(/Video not stored. Project data kept/);
   expect(screen.queryByRole('button', { name: 'Remove video' })).toBeNull();
@@ -282,7 +300,7 @@ it('creates and reopens an Electron split match using its own save key', async (
     expect(useProjectStore.getState().clips?.map((clip) => clip.fps)).toEqual([25, 25]);
     act(() => { const state = useProjectStore.getState(); state.createSegmentFromTrigger(state.mainLabels[0].id, 9); });
     fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Open match: second.mp4 (2 clips)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open match: second.mp4 (+1 clips) (2 clips)' }));
     await enterVideo();
     expect(useProjectStore.getState().segments).toHaveLength(1);
     expect(useProjectStore.getState().clips?.map((clip) => clip.fileName)).toEqual(['second.mp4', 'first.mp4']);
@@ -407,7 +425,7 @@ it.each(['malformed', 'unreadable'])('keeps the Electron library recoverable aft
   };
   try {
     render(<App />);
-    fireEvent.click(await screen.findByText('bad.mp4'));
+    await clickVideoTitle('bad.mp4');
     expect((await screen.findByRole('alert')).textContent).toMatch(/Invalid project|Could not read saved project/);
     expect(useProjectStore.getState()).toBe(state);
     expect(window.electron.saveProject).not.toHaveBeenCalled();
@@ -513,6 +531,7 @@ it('creates a reusable set, requires it for new videos, and shares edits from th
   expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
   expect(await listBrowserProjects()).toEqual([]);
   fireEvent.click(screen.getByRole('button', { name: 'Use label set Squad A' }));
+  await finishCreation();
   await screen.findByRole('button', { name: 'Back to projects' });
   const firstId = useProjectStore.getState().projectId;
   expect(useProjectStore.getState().labelSetId).toBe(shared.id);
@@ -533,6 +552,7 @@ it('creates a reusable set, requires it for new videos, and shares edits from th
   fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [new File(['two'], 'two.mp4')] } });
   await screen.findByRole('dialog', { name: 'Choose a label set' });
   fireEvent.click(screen.getByRole('button', { name: 'Use label set Squad A' }));
+  await finishCreation();
   await screen.findByRole('button', { name: 'Back to projects' });
   expect(useProjectStore.getState().labelSetId).toBe(shared.id);
   expect(useProjectStore.getState().mainLabels[0]).toMatchObject({ id: shared.mainLabels[0].id, name: 'Fast break' });
@@ -547,7 +567,8 @@ it('creates a reusable set, requires it for new videos, and shares edits from th
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   const firstCard = screen.getByText('one.mp4').closest('[class*="rounded-xl"]')!;
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-  fireEvent.click(firstCard.querySelectorAll('button')[1]);
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for one.mp4' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Export JSON' }));
   await waitFor(() => expect(vi.mocked(URL.createObjectURL).mock.calls.some(([blob]) => blob instanceof Blob && blob.type === 'application/json')).toBe(true));
   const exported = vi.mocked(URL.createObjectURL).mock.calls.find(([blob]) => blob instanceof Blob && blob.type === 'application/json')![0] as Blob;
   expect(JSON.parse(await exported.text()).mainLabels[0].name).toBe('Transitions');
@@ -559,7 +580,7 @@ it('creates a reusable set, requires it for new videos, and shares edits from th
   expect(useProjectStore.getState().mainLabels[0].name).toBe('Transitions');
   expect(useProjectStore.getState().segments).toHaveLength(1);
   expect((await loadBrowserProject(firstId)).data.labelSetId).toBe(shared.id);
-});
+}, 10000);
 
 it('cancels label selection without creating a video project', async () => {
   render(<App />);
@@ -590,12 +611,13 @@ it('requires a set before first opening a desktop video and persists shared edit
   };
   try {
     render(<App />);
-    fireEvent.click(await screen.findByText('desktop.mp4'));
+    await clickVideoTitle('desktop.mp4');
     await screen.findByRole('dialog', { name: 'Choose a label set' });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(window.electron.saveProject).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('desktop.mp4'));
+    await clickVideoTitle('desktop.mp4');
     await chooseDefaultSet();
+    await finishCreation();
     await screen.findByRole('button', { name: 'Back to projects' });
     const setId = useProjectStore.getState().labelSetId;
     expect(projects.get('desktop.mp4')?.labelSetId).toBe(setId);
@@ -605,7 +627,7 @@ it('requires a set before first opening a desktop video and persists shared edit
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
     await screen.findByRole('button', { name: 'Manage label sets' });
-    fireEvent.click(await screen.findByText('desktop.mp4'));
+    await clickVideoTitle('desktop.mp4');
     await screen.findByRole('button', { name: 'Back to projects' });
     expect(screen.queryByRole('dialog', { name: 'Choose a label set' })).toBeNull();
     expect(useProjectStore.getState().labelSetId).toBe(setId);
@@ -672,4 +694,162 @@ it('shares custom main and secondary label order, preserves tags, and restores o
   expect(useProjectStore.getState().mainLabels.map((label) => label.name)).toEqual(['Attack', 'Zebra defense']);
   expect(useProjectStore.getState().secondaryLabels.map((label) => label.name)).toEqual(['Player #10', 'Player #9']);
   expect(useProjectStore.getState().segments).toEqual(tags);
+});
+
+it('organizes matches in nested folders, selects and creates teams, duplicates independently, and filters renamed teams', async () => {
+  const app = render(<App />);
+  await screen.findByText('No saved projects yet.');
+  fireEvent.click(screen.getByRole('button', { name: 'Manage teams' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'New team name' }), { target: { value: 'Club A' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add team' }));
+  await screen.findByRole('textbox', { name: 'Team name: Club A' });
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Manage teams' })).getAllByRole('button', { name: 'Close' })[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+  fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: '2026–27' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save folder' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New folder' })).toBeNull());
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Video folders' })).getByRole('button', { name: '2026–27' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+  fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Round 12' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save folder' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New folder' })).toBeNull());
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Video folders' })).getByRole('button', { name: 'Round 12' }));
+  const file = new File(['original media'], 'teams.mp4', { type: 'video/mp4' });
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [file] } });
+  await chooseDefaultSet();
+  await screen.findByRole('dialog', { name: 'Create video' });
+  fireEvent.change(screen.getByLabelText('Video name'), { target: { value: 'League match' } });
+  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'U18' } });
+  fireEvent.change(screen.getByLabelText('Competition'), { target: { value: 'Liga' } });
+  fireEvent.change(screen.getByLabelText('Season'), { target: { value: '2026–27' } });
+  fireEvent.change(screen.getByLabelText('Fixture / matchday'), { target: { value: 'Round 12' } });
+  fireEvent.click(screen.getByRole('combobox', { name: 'Local team' }));
+  const homePicker = within(await screen.findByRole('dialog', { name: 'Local team' }));
+  fireEvent.change(homePicker.getByRole('combobox', { name: 'Search teams' }), { target: { value: 'Club A' } });
+  fireEvent.click(await screen.findByRole('option', { name: 'Club A' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Local team' })).toBeNull());
+  fireEvent.click(screen.getByRole('combobox', { name: 'Visitor team' }));
+  const awayPicker = within(await screen.findByRole('dialog', { name: 'Visitor team' }));
+  fireEvent.change(awayPicker.getByRole('combobox', { name: 'Search teams' }), { target: { value: 'Club B' } });
+  const createVisitor = await awayPicker.findByRole('button', { name: 'Create team “Club B”' });
+  expect(createVisitor.isConnected).toBe(true);
+  fireEvent.click(createVisitor);
+  await waitFor(() => expect(useLibraryStore.getState().catalog.teams.map(team => team.name)).toContain('Club B'));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Visitor team' }).textContent).toContain('Club B'));
+  await finishCreation();
+  await screen.findByRole('button', { name: 'Back to projects' });
+  act(() => { const state = useProjectStore.getState(); state.createSegmentFromTrigger(state.mainLabels[0].id, 10); });
+  const id = useProjectStore.getState().projectId;
+  fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+  await screen.findByRole('article', { name: 'League match' });
+  const original = (await loadBrowserProject(id)).data;
+  expect(original.videoMeta?.fileName).toBe('teams.mp4');
+  expect(original.match).toMatchObject({ category: 'U18', competition: 'Liga', season: '2026–27', fixture: 'Round 12', homeTeamName: 'Club A', awayTeamName: 'Club B' });
+  expect(useLibraryStore.getState().catalog.folders.find(folder => folder.id === original.folderId)?.name).toBe('Round 12');
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for League match' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Duplicate video' }));
+  const copyCard = await screen.findByRole('article', { name: 'League match (copy)' });
+  const copy = (await listBrowserProjects()).find(project => project.id !== id)!;
+  expect(await (await loadBrowserProject(copy.id)).file?.text()).toBe('original media');
+  fireEvent.click(within(copyCard).getByRole('button', { name: 'Match details' }));
+  fireEvent.change(await screen.findByLabelText('Video name'), { target: { value: 'Training copy' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await screen.findByRole('article', { name: 'Training copy' });
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Training copy' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Move video' }));
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Destination folder' }), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Move here' }));
+  await waitFor(() => expect(screen.queryByRole('article', { name: 'Training copy' })).toBeNull());
+  expect((await loadBrowserProject(copy.id)).data.folderId).toBeNull();
+  expect((await loadBrowserProject(id)).data.folderId).toBe(original.folderId);
+  fireEvent.click(screen.getByRole('button', { name: 'All videos' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search videos' }), { target: { value: 'Training' } });
+  expect(screen.queryByRole('article', { name: 'League match' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  fireEvent.click(screen.getByRole('combobox', { name: 'Filter by team' }));
+  fireEvent.click(await screen.findByRole('option', { name: 'Club B' }));
+  expect(screen.getAllByRole('article')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Manage teams' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Team name: Club A' }), { target: { value: 'Club A Academy' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save team Club A' }));
+  await screen.findByRole('textbox', { name: 'Team name: Club A Academy' });
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Manage teams' })).getAllByRole('button', { name: 'Close' })[0]);
+  expect(screen.getAllByText('Club A Academy')).toHaveLength(2);
+  app.unmount();
+  useLibraryStore.setState({ loaded: false, backend: null });
+  render(<App />);
+  await screen.findByRole('article', { name: 'Training copy' });
+  await waitFor(() => expect(screen.getAllByText('Club A Academy')).toHaveLength(2));
+  expect((await loadBrowserProject(id)).data.segments).toHaveLength(1);
+});
+
+it('keeps native copies in independent sidecars while sharing the original source and persisting folder moves', async () => {
+  const data = JSON.parse(useProjectStore.getState().exportProjectJson()) as import('@/types/project').ProjectData;
+  data.name = 'Native match';
+  data.videoMeta = { fileName: 'native.mp4', fileSize: 10, fileType: 'video/mp4', lastModified: 1, fps: 25 };
+  data.labelSetId = 'native-labels';
+  const sets = [{ id: 'native-labels', name: 'Native labels', mainLabels: data.mainLabels, secondaryLabels: data.secondaryLabels, updatedAtMs: 1 }];
+  const projects = new Map([['native.mp4', data]]);
+  let catalog: LibraryCatalog = { folders: [{ id: 'season', name: 'Native season', parentId: null }], teams: [] };
+  const video = { name: 'native.mp4', path: '/videos/native.mp4', url: 'file:///videos/native.mp4', size: 10, modifiedAt: 1, createdAt: 1 };
+  window.electron = {
+    getLibraryCatalog: async () => catalog,
+    changeLibraryCatalog: async change => { catalog = applyLibraryChange(catalog, change); return catalog; },
+    getLabelSets: async () => sets, saveLabelSet: vi.fn(async () => {}),
+    getSavedProjects: async () => [...projects.values()], getClipProjects: async () => [], getVideos: async () => [video],
+    loadProject: async name => projects.get(name) ?? null,
+    saveProject: vi.fn(async (name, project) => { projects.set(name, structuredClone(project)); return true; }),
+    probeVideoMetadata: vi.fn(async () => ({ fps: 25, durationSec: 60 })),
+    cancelExport: vi.fn(async () => {}), onExportProgress: vi.fn(() => () => {}),
+    readFile: vi.fn(), runNativeExport: vi.fn(), runNativeClipExport: vi.fn(),
+  };
+  try {
+    render(<App />);
+    const actions = await screen.findByRole('button', { name: 'Actions for Native match' });
+    await waitFor(() => expect(actions.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(actions); fireEvent.click(screen.getByRole('button', { name: 'Duplicate video' }));
+    const card = await screen.findByRole('article', { name: 'Native match (copy)' });
+    const copy = [...projects.values()].find(project => project.projectId !== data.projectId)!;
+    expect(copy.electronProjectKey).toBe(copy.projectId);
+    expect(copy.videoMeta).toEqual(data.videoMeta);
+    await waitFor(() => expect(within(card).getByRole('button', { name: 'Open project' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(within(card).getByRole('button', { name: 'Actions for Native match (copy)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move video' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Destination folder' }), { target: { value: 'season' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move here' }));
+    await waitFor(() => expect(projects.get(copy.projectId)?.folderId).toBe('season'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Move video' })).toBeNull());
+    fireEvent.click(within(screen.getByRole('article', { name: 'Native match (copy)' })).getByRole('button', { name: 'Open project' }));
+    await enterVideo();
+    expect(useProjectStore.getState().session.videoSourceUrl).toBe(video.url);
+    act(() => { const state = useProjectStore.getState(); state.createSegmentFromTrigger(state.mainLabels[0].id, 10); });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
+    await screen.findByRole('article', { name: 'Native match (copy)' });
+    expect(projects.get(copy.projectId)?.segments).toHaveLength(1);
+    expect(projects.get('native.mp4')?.segments).toHaveLength(0);
+    expect(projects.get('native.mp4')?.folderId).toBeUndefined();
+  } finally { cleanup(); delete window.electron; }
+});
+
+it('keeps an unreadable browser save visible and never replaces it with empty analysis', async () => {
+  const { saveBrowserProject } = await import('@/lib/browserStorage');
+  const data = JSON.parse(useProjectStore.getState().exportProjectJson()) as import('@/types/project').ProjectData;
+  data.name = 'Damaged match'; await saveBrowserProject(data);
+  const json = JSON.stringify({ ...data, mainLabels: null });
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('ohv.library.v1', 3);
+    request.onsuccess = () => {
+      const db = request.result, tx = db.transaction('projects', 'readwrite'), store = tx.objectStore('projects');
+      const record = store.get(data.projectId);
+      record.onsuccess = () => store.put({ ...record.result, json });
+      tx.oncomplete = () => { db.close(); resolve(); }; tx.onabort = () => reject(tx.error);
+    };
+  });
+  render(<App />);
+  const card = await screen.findByRole('article', { name: 'Damaged match' });
+  await waitFor(() => expect(within(card).getByRole('button', { name: 'Open project' }).hasAttribute('disabled')).toBe(false));
+  fireEvent.click(within(card).getByRole('button', { name: 'Open project' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Invalid project file');
+  expect((await listBrowserProjects()).find(project => project.id === data.projectId)?.json).toBe(json);
+  expect(useProjectStore.getState().session.videoSourceUrl).toBeNull();
 });

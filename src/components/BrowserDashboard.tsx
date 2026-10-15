@@ -1,32 +1,49 @@
 import { projectWithLabelSet } from '@/lib/labelSets';
 import { resolveProjectLabelSet } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
-import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i18n';
+import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LibraryShell } from '@/components/library/LibraryShell';
+import { MatchCard } from '@/components/library/MatchCard';
+import { MatchDetailsDialog } from '@/components/library/MatchDetailsDialog';
+import { MoveVideoDialog } from '@/components/library/MoveVideoDialog';
+import { matchesLibraryFilter, projectName, type ConfigureMatch } from '@/lib/library';
+import { useLibraryView } from '@/hooks/useLibraryView';
+import { importMatchTeams, loadLibraryCatalog, matchWithTeamNames, useLibraryStore } from '@/store/libraryStore';
 import { ClipOrderDialog } from '@/components/app/ClipOrderDialog';
 import { fileMeta, readVideoDuration, withProjectClips } from '@/lib/clipTimeline';
-import type { LabelSet, VideoClip } from '@/types/project';
+import type { LabelSet, ProjectData, VideoClip } from '@/types/project';
 import { StorageStatus } from '@/components/app/StorageStatus';
 import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
 import { coerceProjectData, downloadProjectJson, readJsonFile } from '@/lib/projectIo';
 import { openBrowserProject } from '@/lib/browserProjectSession';
-import { deleteBrowserProject, markBrowserProjectOpened, recommendSoftDelete, formatBytes, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, requestPersistentStorage, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
+import { deleteBrowserProject, duplicateBrowserProject, markBrowserProjectOpened, recommendSoftDelete, formatBytes, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, requestPersistentStorage, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
 
-export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet }: { onOpen: () => void; onManageLabelSets: () => void; chooseLabelSet: () => Promise<LabelSet | null> }) {
+function readLibraryEntry(record: StoredProject): { data: ProjectData; error?: string } {
+  try { return { data: coerceProjectData(JSON.parse(record.json)) }; }
+  catch (error) {
+    return { error: storageError(error), data: { schemaVersion: 1, projectId: record.id, name: record.name, createdAtMs: record.updatedAtMs,
+      updatedAtMs: record.updatedAtMs, videoMeta: null, mainLabels: [], secondaryLabels: [], segments: [], settings: { fps: 30 } } };
+  }
+}
+
+export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet, configureMatch }: { onOpen: () => void; onManageLabelSets: () => void; chooseLabelSet: () => Promise<LabelSet | null>; configureMatch: ConfigureMatch }) {
   const t = useTranslation();
-  const language = useLanguageStore((s) => s.language);
   const message = useTranslatedMessage();
   const [projects, setProjects] = useState<StoredProject[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const teams = useLibraryStore(state => state.catalog.teams);
+  const { scope, setScope, search, setSearch, teamId, setTeamId } = useLibraryView();
+  const [editing, setEditing] = useState<ProjectData | null>(null), [moving, setMoving] = useState<ProjectData | null>(null);
   const [pendingClips, setPendingClips] = useState<{ id: string; file: File }[]>([]);
   const videoInput = useRef<HTMLInputElement>(null);
   const jsonInput = useRef<HTMLInputElement>(null);
+  const entries = projects.map(record => ({ record, ...readLibraryEntry(record) }));
 
-  async function refresh() { setProjects(await listBrowserProjects()); }
+  async function refresh() { const [projects] = await Promise.all([listBrowserProjects(), loadLibraryCatalog(true)]); setProjects(projects); }
   async function run(action: () => Promise<void>) {
     setBusy(true); setError('');
     try { await action(); } catch (err) { setError(storageError(err)); }
@@ -73,6 +90,9 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet }: 
         if (!labelSet) return;
         const data = projectWithLabelSet(createEmptyProject(), labelSet);
         data.videoMeta = { fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: file.lastModified };
+        const details = await configureMatch({ name: file.name });
+        if (!details) return;
+        Object.assign(data, details, { folderId: scope === 'all' ? null : scope });
         await saveBrowserProject(data, file);
         void requestPersistentStorage();
         await markBrowserProjectOpened(data.projectId);
@@ -86,45 +106,55 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet }: 
         const data = coerceProjectData(await readJsonFile(file));
         // Imports are copies: never overwrite another project's edits or video.
         data.projectId = createId(); data.updatedAtMs = Date.now();
+        delete data.electronProjectKey;
+        data.folderId = scope === 'all' ? null : scope;
+        data.match = await importMatchTeams(data.match);
         await saveBrowserProject(data);
         await refresh();
       });
     }} />
-    {!busy && projects.length === 0 && <div className="rounded-md border p-12 text-center text-muted-foreground">
-      <p>{t("No saved projects yet.")}</p><p className="mt-2 text-sm">{t("Add a video to start analyzing, or import an existing project JSON.")}</p>
-    </div>}
-    {busy && <p role="status">{t("Loading…")}</p>}
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {projects.map((project) => <Card key={project.id}>
-        <CardHeader><CardTitle className="truncate text-base" title={project.name}>{project.name}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">{formatBytes(project.videoBytes + project.jsonBytes)} · {new Date(project.updatedAtMs).toLocaleDateString(language)}</p>
-          <p className="text-xs text-muted-foreground">{t("Last opened:")}{' '}{project.lastOpenedAtMs ? new Date(project.lastOpenedAtMs).toLocaleDateString(language) : t("Not yet recorded")}</p>
-          {recommendSoftDelete(project) && <p className="rounded border border-amber-500/40 p-2 text-sm" role="note">{t("Recommended to soft-delete: not opened for 30 days. Remove the videos to free space while keeping all project data.")}</p>}
-          {!project.videoBytes && <p className="text-sm text-muted-foreground">{t("Video not stored. Project data kept. Choose the original video when opening this project.")}</p>}
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={() => void run(async () => {
+    <LibraryShell scope={scope} onScopeChange={setScope} search={search} onSearchChange={setSearch} teamId={teamId} onTeamChange={setTeamId}>
+      {!busy && projects.length === 0 && <div className="rounded-md border p-12 text-center text-muted-foreground">
+        <p>{t("No saved projects yet.")}</p><p className="mt-2 text-sm">{t("Add a video to start analyzing, or import an existing project JSON.")}</p>
+      </div>}
+      {busy && <p role="status">{t("Loading…")}</p>}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {entries.filter(entry => matchesLibraryFilter(entry.data, scope, teamId, search, teams)).map(({ record: project, data, error: unreadable }) => {
+          const shared = project.videoBytes > 0 && projects.some(other => other.id !== project.id && other.videoBytes > 0 && (other.videoKey ?? other.id) === (project.videoKey ?? project.id));
+          return <MatchCard key={project.id} project={data} bytes={project.videoBytes + project.jsonBytes} lastOpenedAtMs={project.lastOpenedAtMs}
+            busy={busy} missingVideo={!project.videoBytes} onEdit={() => void run(async () => setEditing((await loadBrowserProject(project.id)).data))} onMove={() => void run(async () => setMoving((await loadBrowserProject(project.id)).data))}
+            onDuplicate={() => void run(async () => { await duplicateBrowserProject(project.id, t('{0} (copy)', project.name.slice(0, 180))); await refresh(); })}
+            onOpen={() => void run(async () => {
               const { data, files } = await loadBrowserProject(project.id);
               const linked = await resolveProjectLabelSet(data);
-              await saveBrowserProject(linked);
-              await markBrowserProjectOpened(data.projectId);
+              await saveBrowserProject(linked); await markBrowserProjectOpened(data.projectId);
               openBrowserProject(linked, files.length ? files : undefined); onOpen();
-            })}>{t("Open project")}</Button>
-            <Button disabled={busy} variant="outline" onClick={() => void run(async () => downloadProjectJson(await resolveProjectLabelSet(coerceProjectData(JSON.parse(project.json))), `${project.name}.json`))}>{t("Export JSON")}</Button>
-            {project.videoBytes > 0 && <Button disabled={busy} variant="outline" onClick={() => {
-              if (window.confirm(t("Remove the stored video clips for “{0}” to free {1}? All labels, segments, and settings will be kept. Keep your original video files to attach them again later.", project.name, formatBytes(project.videoBytes)))) {
+            })}
+            onExport={() => void run(async () => {
+              const linked = await resolveProjectLabelSet((await loadBrowserProject(project.id)).data);
+              downloadProjectJson({ ...linked, ...(linked.match ? { match: matchWithTeamNames(linked.match) } : {}) }, `${project.name}.json`);
+            })}
+            onRemoveVideo={project.videoBytes ? () => {
+              if (window.confirm(shared ? t('Remove the video from “{0}”? Other copies keep their video and analysis.', project.name) : t("Remove the stored video clips for “{0}” to free {1}? All labels, segments, and settings will be kept. Keep your original video files to attach them again later.", project.name, formatBytes(project.videoBytes)))) {
                 void run(async () => { await removeBrowserProjectVideo(project.id); await refresh(); });
               }
-            }}>{recommendSoftDelete(project) ? t("Soft-delete videos") : t("Remove video")}</Button>}
-            <Button disabled={busy} variant="ghost" onClick={() => {
-              if (window.confirm(t("Delete “{0}” and its stored video from this browser?", project.name))) {
-                void run(async () => { await deleteBrowserProject(project.id); await refresh(); });
-              }
-            }}>{t("Delete project")}</Button>
-          </div>
-        </CardContent>
-      </Card>)}
-    </div>
+            } : undefined}
+            onDelete={() => {
+              if (window.confirm(t("Delete “{0}” and its stored video from this browser?", project.name))) void run(async () => { await deleteBrowserProject(project.id); await refresh(); });
+            }}>
+            {unreadable && <p role="note" className="text-xs text-destructive">{message(unreadable)}</p>}
+            {recommendSoftDelete(project) && <p className="rounded border border-amber-500/40 p-2 text-xs" role="note">{t("Recommended to soft-delete: not opened for 30 days. Remove the videos to free space while keeping all project data.")}</p>}
+          </MatchCard>;
+        })}
+      </div>
+      {!busy && projects.length > 0 && !entries.some(entry => matchesLibraryFilter(entry.data, scope, teamId, search, teams)) && <p className="rounded-md border p-8 text-center text-sm text-muted-foreground">{t('No videos match this folder or filter.')}</p>}
+    </LibraryShell>
+    {editing && <MatchDetailsDialog initial={{ name: projectName(editing), match: editing.match }} onCancel={() => setEditing(null)} onSave={async details => {
+      await saveBrowserProject({ ...editing, ...details, updatedAtMs: Date.now() }); await refresh(); setEditing(null);
+    }} />}
+    {moving && <MoveVideoDialog name={projectName(moving)} initial={moving.folderId} onClose={() => setMoving(null)} onSave={async folderId => {
+      await saveBrowserProject({ ...moving, folderId, updatedAtMs: Date.now() }); await refresh();
+    }} />}
     {pendingClips.length > 0 && <ClipOrderDialog
       items={pendingClips.map((item) => ({ id: item.id, name: item.file.name }))}
       onChange={(ids) => setPendingClips(ids.map((id) => pendingClips.find((item) => item.id === id)!))}
@@ -138,6 +168,9 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet }: 
           catch (err) { throw new Error(`${item.file.name}: ${storageError(err)}`); }
         }
         const data = withProjectClips(projectWithLabelSet(createEmptyProject(), labelSet), clips);
+        const details = await configureMatch({ name: projectName(data) });
+        if (!details) return;
+        Object.assign(data, details, { folderId: scope === 'all' ? null : scope });
         const files = pendingClips.map((item) => item.file);
         await saveBrowserProject(data, files);
         void requestPersistentStorage();

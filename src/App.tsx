@@ -19,6 +19,9 @@ import { BrowserDashboard } from '@/components/BrowserDashboard';
 import { currentProject } from '@/lib/browserProjectSession';
 import { saveBrowserProject, storageError } from '@/lib/browserStorage';
 import type { LabelSet, ProjectData } from '@/types/project';
+import { MatchDetailsDialog } from '@/components/library/MatchDetailsDialog';
+import { loadLibraryCatalog } from '@/store/libraryStore';
+import type { ConfigureMatch, MatchDetails } from '@/lib/library';
 
 let saves = Promise.resolve();
 function saveProject(data: ProjectData) {
@@ -39,6 +42,17 @@ export default function App() {
   const message = useTranslatedMessage();
   const [setsOpen, setSetsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [newMatch, setNewMatch] = useState<Parameters<ConfigureMatch>[0] | null>(null);
+  const matchSelection = useRef<((details: MatchDetails | null) => void) | null>(null);
+  const configureMatch: ConfigureMatch = async (initial) => {
+    await loadLibraryCatalog();
+    matchSelection.current?.(null);
+    setNewMatch(initial);
+    return new Promise(resolve => { matchSelection.current = resolve; });
+  };
+  function finishMatch(details: MatchDetails | null) {
+    setNewMatch(null); matchSelection.current?.(details); matchSelection.current = null;
+  }
   const selection = useRef<((set: LabelSet | null) => void) | null>(null);
   async function chooseLabelSet(): Promise<LabelSet | null> {
     await loadLabelSets();
@@ -54,6 +68,7 @@ export default function App() {
   const labelSetModals = <>
     {setsOpen && <LabelSetsModal open onOpenChange={setSetsOpen} />}
     {pickerOpen && <LabelSetsModal open onOpenChange={(open) => { if (!open) finishSelection(null); }} onSelect={finishSelection} />}
+    {newMatch && <MatchDetailsDialog initial={newMatch} creating onCancel={() => finishMatch(null)} onSave={details => finishMatch(details)} />}
   </>;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -118,8 +133,8 @@ export default function App() {
     } catch (err) { setSaveError(storageError(err)); }
   }
 
-  if (window.electron && !videoSourceUrl) return <><Dashboard onManageLabelSets={() => setSetsOpen(true)} chooseLabelSet={chooseLabelSet} />{labelSetModals}</>;
-  if (!window.electron && libraryOpen) return <><BrowserDashboard onManageLabelSets={() => setSetsOpen(true)} chooseLabelSet={chooseLabelSet} onOpen={() => { setLibraryOpen(false); setSaveStatus('Saved'); }} />{labelSetModals}</>;
+  if (window.electron && !videoSourceUrl) return <><Dashboard onManageLabelSets={() => setSetsOpen(true)} chooseLabelSet={chooseLabelSet} configureMatch={configureMatch} />{labelSetModals}</>;
+  if (!window.electron && libraryOpen) return <><BrowserDashboard onManageLabelSets={() => setSetsOpen(true)} chooseLabelSet={chooseLabelSet} configureMatch={configureMatch} onOpen={() => { setLibraryOpen(false); setSaveStatus('Saved'); }} />{labelSetModals}</>;
 
   return (
     <><div className="flex h-full w-full min-w-0 flex-col bg-background text-foreground">

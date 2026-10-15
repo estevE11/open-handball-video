@@ -1,6 +1,9 @@
 import type { LabelSet, MainLabel, ProjectData, Segment } from "./project";
+import type { LibraryCatalog, LibraryChange } from '../../electron/libraryCatalog';
 
 export interface ElectronAPI {
+  getLibraryCatalog?: () => Promise<LibraryCatalog>;
+  changeLibraryCatalog?: (change: LibraryChange) => Promise<LibraryCatalog>;
   getSavedProjects: () => Promise<unknown[]>;
   getLabelSets: () => Promise<LabelSet[]>;
   saveLabelSet: (labelSet: LabelSet) => Promise<void>;

@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
   getSavedProjects: () => ipcRenderer.invoke('get-saved-projects'),
+  getLibraryCatalog: () => ipcRenderer.invoke('get-library-catalog'),
+  changeLibraryCatalog: (change: unknown) => ipcRenderer.invoke('change-library-catalog', change),
   getLabelSets: () => ipcRenderer.invoke('get-label-sets'),
   saveLabelSet: (labelSet: unknown) => ipcRenderer.invoke('save-label-set', labelSet),
   cancelExport: (exportId: string) => ipcRenderer.invoke('cancel-export', exportId),

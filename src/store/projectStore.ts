@@ -108,6 +108,7 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
     createdAtMs,
     updatedAtMs,
     videoMeta,
+    name, folderId, match,
     clips,
     electronProjectKey,
     labelSetId,
@@ -124,6 +125,7 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
     createdAtMs,
     updatedAtMs,
     videoMeta,
+    name, folderId, match,
     clips,
     electronProjectKey,
     labelSetId,
@@ -136,8 +138,8 @@ function partializeForPersist(state: ProjectState): ProjectData & { lastCreatedS
 }
 
 function pickProjectData(state: ProjectState): ProjectData {
-  const { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, labelSetId, mainLabels, secondaryLabels, segments, settings } = state;
-  return { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, clips, electronProjectKey, labelSetId, mainLabels, secondaryLabels, segments, settings };
+  const { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, name, folderId, match, clips, electronProjectKey, labelSetId, mainLabels, secondaryLabels, segments, settings } = state;
+  return { schemaVersion, projectId, createdAtMs, updatedAtMs, videoMeta, name, folderId, match, clips, electronProjectKey, labelSetId, mainLabels, secondaryLabels, segments, settings };
 }
 
 function migrateToV1(persistedState: unknown): Partial<ProjectState> {
@@ -396,6 +398,7 @@ export const useProjectStore = create<ProjectState>()(
             clips: undefined,
             electronProjectKey: undefined,
             labelSetId: undefined,
+            name: undefined, folderId: undefined, match: undefined,
             ...data,
             past: [], future: [],
             updatedAtMs: nowMs(),
@@ -424,6 +427,7 @@ export const useProjectStore = create<ProjectState>()(
             clips: undefined,
             electronProjectKey: undefined,
             labelSetId: undefined,
+            name: undefined, folderId: undefined, match: undefined,
             lastCreatedSegmentId: null,
             selectedSegmentId: null,
             session: { videoSourceUrl: null, videoFile: null, clipSources: [], hydrated: true },
@@ -455,5 +459,4 @@ export const useProjectStore = create<ProjectState>()(
     },
   ),
 );
-
 

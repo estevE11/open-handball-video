@@ -2,7 +2,8 @@ import 'fake-indexeddb/auto';
 import { IDBObjectStore } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyProject } from '@/lib/projectDefaults';
-import { calculateCapacity, deleteBrowserProject, formatBytes, getBrowserCapacity, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
+import { createId } from '@/lib/ids';
+import { calculateCapacity, changeBrowserCatalog, getBrowserCatalog, duplicateBrowserProject, deleteBrowserProject, formatBytes, getBrowserCapacity, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
 
 const local = new Map<string, string>();
 vi.stubGlobal('window', new EventTarget());
@@ -22,6 +23,53 @@ function fixture(name = 'match.mp4', size = 32) {
 beforeEach(async () => {
   for (const project of await listBrowserProjects()) await deleteBrowserProject(project.id);
   local.clear();
+});
+
+it('duplicates analysis independently without copying video bytes or losing match metadata', async () => {
+  const { data, file } = fixture();
+  data.name = 'Local vs Visitors'; data.folderId = 'season';
+  data.match = { category: 'U18', competition: 'League', season: '2026', fixture: 'Round 12', homeTeamId: 'a', homeTeamName: 'Local', awayTeamId: 'b', awayTeamName: 'Visitors' };
+  data.labelSetId = 'shared';
+  data.segments.push({ id: 'tag', mainLabelId: data.mainLabels[0].id, startTimeSec: 1, endTimeSec: 2, secondaryLabelIds: [], createdAtMs: 1 });
+  await saveBrowserProject(data, file);
+  const copy = await duplicateBrowserProject(data.projectId, 'Copy');
+  expect(copy.projectId).not.toBe(data.projectId);
+  expect(copy.segments[0].id).not.toBe(data.segments[0].id);
+  expect(copy.match).toEqual(data.match); expect(copy.folderId).toBe('season'); expect(copy.labelSetId).toBe('shared');
+  const records = await listBrowserProjects();
+  expect(new Set(records.map(record => record.videoKey)).size).toBe(1);
+  expect(calculateCapacity(records, {}).totalBytes).toBe(file.size + records.reduce((sum, record) => sum + record.jsonBytes, 0));
+  copy.segments[0].name = 'Independent'; await saveBrowserProject(copy);
+  expect((await loadBrowserProject(data.projectId)).data.segments[0].name).toBeUndefined();
+  await deleteBrowserProject(data.projectId);
+  expect(await (await loadBrowserProject(copy.projectId)).file?.arrayBuffer()).toEqual(await file.arrayBuffer());
+});
+
+it('detaches or replaces one shared video while keeping the other copy playable', async () => {
+  const { data, file } = fixture(); await saveBrowserProject(data, file);
+  const copy = await duplicateBrowserProject(data.projectId, 'Copy');
+  const replacement = new File(['new video'], 'replacement.mp4', { type: 'video/mp4' });
+  data.videoMeta = { fileName: replacement.name, fileType: replacement.type, fileSize: replacement.size, lastModified: replacement.lastModified };
+  await saveBrowserProject(data, replacement);
+  expect(await (await loadBrowserProject(copy.projectId)).file?.arrayBuffer()).toEqual(await file.arrayBuffer());
+  expect(await (await loadBrowserProject(data.projectId)).file?.arrayBuffer()).toEqual(await replacement.arrayBuffer());
+  const another = await duplicateBrowserProject(copy.projectId, 'Another');
+  await removeBrowserProjectVideo(copy.projectId);
+  expect((await loadBrowserProject(copy.projectId)).file).toBeUndefined();
+  expect(await (await loadBrowserProject(another.projectId)).file?.arrayBuffer()).toEqual(await file.arrayBuffer());
+  await deleteBrowserProject(another.projectId);
+  expect(await (await loadBrowserProject(data.projectId)).file?.arrayBuffer()).toEqual(await replacement.arrayBuffer());
+});
+
+it('persists folders and teams transactionally and rejects cycles without committing partial changes', async () => {
+  const root = createId(), child = createId();
+  await changeBrowserCatalog({ kind: 'folder', folder: { id: root, name: 'Storage test season', parentId: null } });
+  await changeBrowserCatalog({ kind: 'folder', folder: { id: child, name: 'Round', parentId: root } });
+  const before = await getBrowserCatalog();
+  await expect(changeBrowserCatalog({ kind: 'folder', folder: { id: root, name: 'Storage test season', parentId: child } })).rejects.toThrow('inside itself');
+  expect(await getBrowserCatalog()).toEqual(before);
+  await changeBrowserCatalog({ kind: 'team', team: { id: createId(), name: 'Storage test club' } });
+  expect((await getBrowserCatalog()).teams.some(team => team.name === 'Storage test club')).toBe(true);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -105,7 +153,7 @@ describe('browser project library', () => {
 });
 
 describe('capacity forecast', () => {
-  const project = (videoBytes: number, jsonBytes: number): StoredProject => ({ id: 'test', json: '{}', name: 'test', updatedAtMs: 0, videoBytes, jsonBytes });
+  const project = (videoBytes: number, jsonBytes: number): StoredProject => ({ id: createId(), json: '{}', name: 'test', updatedAtMs: 0, videoBytes, jsonBytes });
   it('uses remaining quota divided by average complete video plus JSON size', () => {
     const capacity = calculateCapacity([project(900, 100), project(2900, 100), project(0, 100)], { usage: 5000, quota: 16000 });
     expect(capacity).toMatchObject({ totalBytes: 4100, remainingBytes: 11000, averageBytes: 2000, projectsLeft: 5 });
@@ -180,7 +228,7 @@ it('removes only the video atomically, preserving JSON and other projects', asyn
     expect(restored.file).toBeUndefined();
     const after = await listBrowserProjects();
     expect(after.find((project) => project.id === first.data.projectId)).toEqual({
-      ...before.find((project) => project.id === first.data.projectId), videoBytes: 0,
+      ...before.find((project) => project.id === first.data.projectId), videoBytes: 0, videoKey: undefined,
     });
     expect(calculateCapacity(before, {}).totalBytes - calculateCapacity(after, {}).totalBytes).toBe(first.file.size);
     expect((await loadBrowserProject(second.data.projectId)).file?.size).toBe(second.file.size);

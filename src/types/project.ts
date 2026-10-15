@@ -2,6 +2,8 @@ export type Id = string;
 
 export type { MainLabel, SecondaryLabel, LabelSet } from '../../electron/labelSets';
 import type { MainLabel, SecondaryLabel } from '../../electron/labelSets';
+export type { LibraryFolder, LibraryCatalog, Team, MatchMetadata } from '../../electron/libraryCatalog';
+import type { MatchMetadata } from '../../electron/libraryCatalog';
 
 export type Segment = {
   id: Id;
@@ -36,6 +38,10 @@ export type VideoClip = VideoMeta & {
 };
 
 export type ProjectData = {
+  /** Display name and logical folder; source filenames stay unchanged. */
+  name?: string;
+  folderId?: string | null;
+  match?: MatchMetadata;
   /** Ordered sources for a split match. Absent on legacy single-video projects. */
   clips?: VideoClip[];
   /** Separate sidecar for an Electron split-match project. */
@@ -52,5 +58,4 @@ export type ProjectData = {
   segments: Segment[];
   settings: ProjectSettings;
 };
-
 
