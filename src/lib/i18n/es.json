@@ -326,5 +326,11 @@
   "Invalid library change.": "Cambio de biblioteca no válido.",
   "Restart the desktop app to manage folders and teams.": "Reinicia la aplicación de escritorio para gestionar carpetas y equipos.",
   "Restore the original video to Documents/open-handball-video, then refresh.": "Restaura el vídeo original en Documents/open-handball-video y actualiza.",
-  "Remove the video from “{0}”? Other copies keep their video and analysis.": "¿Quitar el vídeo de «{0}»? Las otras copias conservarán su vídeo y análisis."
+  "Remove the video from “{0}”? Other copies keep their video and analysis.": "¿Quitar el vídeo de «{0}»? Las otras copias conservarán su vídeo y análisis.",
+  "Protect your saved work": "Protege tu trabajo guardado",
+  "Your videos and annotations are saved only in this browser on this device. There is no cloud backup. Without persistent storage, your browser may automatically delete them to free up space.": "Tus vídeos y anotaciones se guardan solo en este navegador y en este dispositivo. No hay ninguna copia de seguridad en la nube. Sin almacenamiento persistente, el navegador puede eliminarlos automáticamente para liberar espacio.",
+  "Enable persistent storage to help protect your projects from automatic cleanup. Your browser decides whether to grant it.": "Activa el almacenamiento persistente para ayudar a proteger tus proyectos de la limpieza automática. El navegador decide si lo permite.",
+  "Enable persistent storage": "Activar almacenamiento persistente",
+  "Requesting protection…": "Solicitando protección…",
+  "Keep backups: export each project as JSON and keep the original videos. Persistent storage does not protect against clearing site data, private browsing, or losing this device.": "Guarda copias de seguridad: exporta cada proyecto en formato JSON y conserva los vídeos originales. El almacenamiento persistente no protege frente al borrado de los datos del sitio, la navegación privada ni la pérdida de este dispositivo."
 }

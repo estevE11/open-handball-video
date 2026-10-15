@@ -326,5 +326,11 @@
   "Invalid library change.": "Canvi de biblioteca no vàlid.",
   "Restart the desktop app to manage folders and teams.": "Reinicia l’aplicació d’escriptori per gestionar carpetes i equips.",
   "Restore the original video to Documents/open-handball-video, then refresh.": "Restaura el vídeo original a Documents/open-handball-video i actualitza.",
-  "Remove the video from “{0}”? Other copies keep their video and analysis.": "Vols treure el vídeo de «{0}»? Les altres còpies conservaran el vídeo i l’anàlisi."
+  "Remove the video from “{0}”? Other copies keep their video and analysis.": "Vols treure el vídeo de «{0}»? Les altres còpies conservaran el vídeo i l’anàlisi.",
+  "Protect your saved work": "Protegeix la feina desada",
+  "Your videos and annotations are saved only in this browser on this device. There is no cloud backup. Without persistent storage, your browser may automatically delete them to free up space.": "Els vídeos i les anotacions es desen només en aquest navegador i en aquest dispositiu. No hi ha cap còpia de seguretat al núvol. Sense emmagatzematge persistent, el navegador els pot eliminar automàticament per alliberar espai.",
+  "Enable persistent storage to help protect your projects from automatic cleanup. Your browser decides whether to grant it.": "Activa l’emmagatzematge persistent per ajudar a protegir els projectes de la neteja automàtica. El navegador decideix si ho permet.",
+  "Enable persistent storage": "Activa l’emmagatzematge persistent",
+  "Requesting protection…": "Sol·licitant protecció…",
+  "Keep backups: export each project as JSON and keep the original videos. Persistent storage does not protect against clearing site data, private browsing, or losing this device.": "Desa còpies de seguretat: exporta cada projecte en format JSON i conserva els vídeos originals. L’emmagatzematge persistent no protegeix contra l’esborrament de les dades del lloc, la navegació privada ni la pèrdua d’aquest dispositiu."
 }

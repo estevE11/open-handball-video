@@ -139,7 +139,7 @@ export default function App() {
   return (
     <><div className="flex h-full w-full min-w-0 flex-col bg-background text-foreground">
       <TopBar onOpenSettings={() => setSettingsOpen(true)} onOpenExport={() => setExportOpen(true)} showBackButton onBack={() => void backToLibrary()} />
-      {!window.electron && <StorageStatus />}
+      {!window.electron && <StorageStatus compact />}
       <div className="px-3 py-1 text-xs" role={saveError ? 'alert' : 'status'}>
         {message(saveError || saveStatus)}
         {saveError && <button className="ml-3 underline" onClick={() => {
