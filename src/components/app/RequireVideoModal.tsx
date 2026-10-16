@@ -1,5 +1,7 @@
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { recordDiagnostic } from '@/lib/diagnostics';
+import { DiagnosticsButton } from './DiagnosticsButton';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -23,6 +25,9 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const open = hydrated && !hasVideoFile;
+  useEffect(() => {
+    if (open && videoMeta) recordDiagnostic('warning', 'media', 'attachment.required', { clipCount: clips?.length ?? 1, bytes: videoMeta.fileSize });
+  }, [open, videoMeta, clips]);
 
   const subtitle = useMemo(() => {
     if (clips) return t("Choose all {0} original clips. Their saved order and tags will be restored.", clips.length);
@@ -58,7 +63,7 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
             try {
               if (window.electron) setVideoFile(file, URL.createObjectURL(file));
               else await attachBrowserClips(files);
-            } catch (err) { setError(storageError(err)); setBusy(false); return; }
+            } catch (err) { recordDiagnostic('error', 'media', 'attachment.failed', { clipCount: files.length }, err); setError(storageError(err)); setBusy(false); return; }
             setBusy(false);
             if (clips) return;
             try {
@@ -67,12 +72,14 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
                 setVideoFps(fps);
               }
             } catch (err) {
+              recordDiagnostic('warning', 'media', 'fps_probe.failed', undefined, err);
               console.warn('[video] fps probe failed', err);
             }
           }}
         />
 
         <div className="flex justify-end gap-2">
+          <DiagnosticsButton />
           {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
           <Button disabled={busy} variant="ghost" onClick={onBack}>{t("Back to projects")}</Button>
           <Button disabled={busy} variant="secondary" onClick={() => fileInputRef.current?.click()}>
@@ -83,5 +90,4 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
     </Dialog>
   );
 }
-
 

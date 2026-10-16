@@ -3,6 +3,7 @@ import { IDBObjectStore } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
+import { clearDiagnostics, diagnosticHistory } from '@/lib/diagnostics';
 import { calculateCapacity, changeBrowserCatalog, getBrowserCatalog, duplicateBrowserProject, deleteBrowserProject, formatBytes, getBrowserCapacity, listBrowserProjects, loadBrowserProject, migrateLegacyProject, removeBrowserProjectVideo, saveBrowserProject, storageError, type StoredProject } from '@/lib/browserStorage';
 
 const local = new Map<string, string>();
@@ -199,11 +200,13 @@ it('rejects malformed imports and strips fields that could overwrite store actio
 });
 
 it('rejects an oversized video before any records are written', async () => {
+  clearDiagnostics();
   const original = navigator.storage;
   Object.defineProperty(navigator, 'storage', { configurable: true, value: { estimate: async () => ({ quota: 100, usage: 90 }) } });
   try {
     const { data, file } = fixture('large.mp4', 200);
     await expect(saveBrowserProject(data, file)).rejects.toMatchObject({ name: 'QuotaExceededError' });
+    expect(diagnosticHistory().events.at(-1)).toMatchObject({ code: 'project.save.failed', error: { name: 'QuotaExceededError' }, details: { includesMedia: true, mediaBytes: 200 } });
     expect(await listBrowserProjects()).toEqual([]);
   } finally {
     Object.defineProperty(navigator, 'storage', { configurable: true, value: original });

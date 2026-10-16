@@ -1,6 +1,8 @@
 import { projectWithLabelSet } from '@/lib/labelSets';
 import { resolveProjectLabelSet } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
+import { DiagnosticsButton } from '@/components/app/DiagnosticsButton';
+import { recordDiagnostic } from '@/lib/diagnostics';
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -46,25 +48,26 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet, co
   async function refresh() { const [projects] = await Promise.all([listBrowserProjects(), loadLibraryCatalog(true)]); setProjects(projects); }
   async function run(action: () => Promise<void>) {
     setBusy(true); setError('');
-    try { await action(); } catch (err) { setError(storageError(err)); }
+    try { await action(); } catch (err) { recordDiagnostic('error', 'library', 'browser.action_failed', undefined, err); setError(storageError(err)); }
     finally { setBusy(false); }
   }
   useEffect(() => {
     let active = true;
     void migrateLegacyProject().catch((err: unknown) => {
+      recordDiagnostic('error', 'storage', 'legacy.migration_failed', undefined, err);
       if (active) setError(`Could not migrate the previous autosave: ${storageError(err)}`);
     }).then(listBrowserProjects).then((list) => {
       if (active) setProjects(list);
-    }).catch((err: unknown) => { if (active) setError(storageError(err)); })
+    }).catch((err: unknown) => { recordDiagnostic('error', 'library', 'browser.load_failed', undefined, err); if (active) setError(storageError(err)); })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, []);
 
   return <div className="flex h-screen flex-col gap-5 overflow-auto bg-background p-4 text-foreground md:p-8">
     <header>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <h1 className="text-2xl font-bold sm:text-3xl">Open Handball Video</h1>
-        <LanguageSelector compact />
+        <div className="flex flex-wrap items-center justify-end gap-2"><DiagnosticsButton /><LanguageSelector compact /></div>
       </div>
       <p className="mt-2 text-muted-foreground">{t("Add one video or several clips for a split match. Videos and projects stay in this browser.")}</p>
     </header>
@@ -77,7 +80,7 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet, co
       </div>
       <Button className="ml-auto" variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
     </div>
-    {error && <p role="alert" className="rounded-md border border-destructive p-3 text-sm">{message(error)}</p>}
+    {error && <div role="alert" className="space-y-2 rounded-md border border-destructive p-3 text-sm"><p>{message(error)}</p><DiagnosticsButton /></div>}
     <input ref={videoInput} type="file" multiple accept="video/*,.mp4,.mov,.webm,.mkv" className="hidden" aria-label={t("Add video file")} onChange={(event) => {
       const files = Array.from(event.target.files ?? []); event.target.value = '';
       if (!files.length) return;

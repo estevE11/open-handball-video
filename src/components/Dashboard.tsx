@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
+import { DiagnosticsButton } from '@/components/app/DiagnosticsButton';
+import { recordDiagnostic } from '@/lib/diagnostics';
 import { ClipOrderDialog } from '@/components/app/ClipOrderDialog';
 import { LibraryShell } from '@/components/library/LibraryShell';
 import { MatchCard } from '@/components/library/MatchCard';
@@ -38,13 +40,13 @@ export function Dashboard({ onManageLabelSets, chooseLabelSet, configureMatch }:
     if (!window.electron) return;
     const [list, saved, split] = await Promise.all([window.electron.getVideos(), window.electron.getSavedProjects(), window.electron.getClipProjects(), loadLibraryCatalog(true)]);
     const valid = new Map<string, ProjectData>();
-    for (const raw of [...saved, ...split]) { try { const project = coerceProjectData(raw); valid.set(project.projectId, project); } catch { /* Invalid saves are reported when opening their source video. */ } }
+    for (const raw of [...saved, ...split]) { try { const project = coerceProjectData(raw); valid.set(project.projectId, project); } catch (error) { recordDiagnostic('warning', 'storage', 'desktop.invalid_project', undefined, error); } }
     setProjects([...valid.values()]); setVideos(list.sort((a, b) => b.modifiedAt - a.modifiedAt));
     setSelected(previous => previous.filter(path => list.some(video => video.path === path)));
   }
   async function run(action: () => Promise<void>) {
     setLoading(true); setError('');
-    try { await action(); } catch (error) { setError(error instanceof Error ? error.message : 'Could not read projects.'); }
+    try { await action(); } catch (error) { recordDiagnostic('error', 'library', 'desktop.action_failed', undefined, error); setError(error instanceof Error ? error.message : 'Could not read projects.'); }
     finally { setLoading(false); }
   }
   useEffect(() => { void run(fetchVideos); }, []);
@@ -83,7 +85,7 @@ export function Dashboard({ onManageLabelSets, chooseLabelSet, configureMatch }:
   entries.push(...projects.filter(project => !videos.some(video => key(project) === video.name)).map(project => ({ project, saved: true })));
   const filtered = entries.filter(entry => matchesLibraryFilter(entry.project, scope, teamId, search, teams));
   return <div className="flex h-screen flex-col gap-5 overflow-auto bg-background p-4 text-foreground md:p-8">
-    <header><div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4"><h1 className="text-2xl font-bold sm:text-3xl">Open Handball Video</h1><LanguageSelector compact /></div>
+    <header><div className="flex flex-wrap items-start justify-between gap-4"><h1 className="text-2xl font-bold sm:text-3xl">Open Handball Video</h1><div className="flex flex-wrap items-center justify-end gap-2"><DiagnosticsButton /><LanguageSelector compact /></div></div>
       <p className="mt-2 text-muted-foreground">{t('Open a video, or select several clips below to create a split match.')}</p></header>
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-2">
       <Button disabled={selected.length < 2 || loading} onClick={() => { setError(''); setPending(selected.map(path => videos.find(video => video.path === path)!)); }}>{t('Arrange selected clips ({0})', selected.length)}</Button>
@@ -95,7 +97,7 @@ export function Dashboard({ onManageLabelSets, chooseLabelSet, configureMatch }:
       void run(async () => { const data = coerceProjectData(await readJsonFile(file)); data.projectId = createId(); data.electronProjectKey = data.projectId;
         data.folderId = scope === 'all' ? null : scope; data.match = await importMatchTeams(data.match); data.updatedAtMs = Date.now(); await save(data); await fetchVideos(); });
     }} />
-    {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
+    {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{message(error)}</p><DiagnosticsButton /></div>}
     <LibraryShell scope={scope} onScopeChange={setScope} search={search} onSearchChange={setSearch} teamId={teamId} onTeamChange={setTeamId}>
       {!entries.length && !loading && <div className="rounded-md border p-10 text-center text-muted-foreground"><p>{t('No videos found in "Documents/open-handball-video"')}</p><p className="mt-2 text-sm">{t('Add .mp4, .mov, or .webm files there.')}</p></div>}
       {entries.length > 0 && !filtered.length && !loading && <p className="rounded-md border p-8 text-center text-muted-foreground">{t('No videos match this folder or filter.')}</p>}

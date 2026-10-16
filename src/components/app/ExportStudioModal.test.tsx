@@ -5,12 +5,14 @@ import { ExportStudioModal } from './ExportStudioModal';
 import { useProjectStore } from '@/store/projectStore';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { exportClipSequence } from '@/lib/exportClipSequence';
+import { clearDiagnostics, createDiagnosticReport, recordEngineLog } from '@/lib/diagnostics';
 
 vi.mock('@/lib/exportMp4', () => ({ exportFilteredSegmentsToMp4: vi.fn() }));
 vi.mock('@/lib/exportClipSequence', () => ({ exportClipSequence: vi.fn() }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); useProjectStore.getState().resetProject(); });
 
 it('shows live progress, keeps failure below 100%, and resets correctly for a successful retry', async () => {
+  clearDiagnostics();
   URL.createObjectURL = vi.fn(() => 'blob:test');
   URL.revokeObjectURL = vi.fn();
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
@@ -36,8 +38,21 @@ it('shows live progress, keeps failure below 100%, and resets correctly for a su
   expect(bar.getAttribute('aria-valuenow')).toBe('40');
   act(() => report('Preparing download', 1));
   expect(bar.getAttribute('aria-valuenow')).toBe('99');
+  recordEngineLog('Encoder output: unsupported pixel format');
   await act(async () => reject(new Error('Encoding failed')));
   expect(screen.getByText('Export failed')).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('Encoding failed');
+  expect(screen.getByRole('button', { name: 'Share diagnostics' })).toBeTruthy();
+  const diagnostics = await createDiagnosticReport();
+  expect(diagnostics.events.at(-1)).toMatchObject({ code: 'export.failed', details: { phase: 'Preparing download', ratio: 1, selectedSegments: 1 }, error: { message: 'Encoding failed' } });
+  expect(diagnostics.engineLogs.at(-1)?.message).toContain('unsupported pixel format');
+  fireEvent.click(screen.getByRole('button', { name: 'Share diagnostics' }));
+  const reportDialog = await screen.findByRole('dialog', { name: 'Beta diagnostic report' });
+  await waitFor(() => expect(reportDialog.querySelector('pre')).toBeTruthy());
+  const shared = JSON.parse(reportDialog.querySelector('pre')!.textContent!);
+  expect(shared.focusEventId).toBe(diagnostics.events.at(-1)?.id);
+  expect(shared.events.at(-1).error.message).toBe('Encoding failed');
+  fireEvent.click(within(reportDialog).getByRole('button', { name: 'Close' }));
   expect(bar.getAttribute('aria-valuenow')).toBe('99');
   fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
   expect(bar.getAttribute('aria-valuenow')).toBe('0');

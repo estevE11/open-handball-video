@@ -17,6 +17,8 @@ import { formatTimecode } from '@/lib/time';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { useProjectStore } from '@/store/projectStore';
+import { DiagnosticsButton } from './DiagnosticsButton';
+import { projectDiagnosticSummary, recordDiagnostic, setDiagnosticContext } from '@/lib/diagnostics';
 
 type ExportStudioModalProps = {
   open: boolean;
@@ -47,6 +49,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [phase, setPhase] = useState<string>('');
   const [ratio, setRatio] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string>();
 
   const timelineSegments = useMemo(() => [...segments].sort((a, b) => a.startTimeSec - b.startTimeSec), [segments]);
   const timelineNumbers = useMemo(() => new Map(timelineSegments.map((seg, index) => [seg.id, index + 1])), [timelineSegments]);
@@ -111,7 +114,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!isRendering) onOpenChange(next); }}>
-      <DialogContent className="sm:max-w-[980px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[980px]">
         <DialogHeader>
           <DialogTitle>{t("Export Studio")}</DialogTitle>
           <DialogDescription>{t("Drag clips or use the arrows to set export order. Timeline # shows each clip’s original position. Uncheck clips to leave them out.")}</DialogDescription>
@@ -340,12 +343,16 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             </Table>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">
-              {activeVideoInput ? t("Video loaded") : t("No video loaded. Upload a video to enable export.")}
+          {error && <div role="alert" className="min-w-0 space-y-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">
+            <p className="whitespace-pre-wrap break-words text-sm text-destructive">{message(error)}</p>
+            <div className="flex flex-wrap items-center gap-3"><DiagnosticsButton errorId={errorId} /><span className="text-xs text-muted-foreground">{t('Share this report to help us investigate the export failure.')}</span></div>
+          </div>}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{activeVideoInput ? t("Video loaded") : t("No video loaded. Upload a video to enable export.")}</span>
+              {!error && <DiagnosticsButton compact />}
             </div>
-            <div className="flex items-center gap-2">
-              {error ? <div className="max-w-[520px] truncate text-xs text-destructive">{message(error)}</div> : null}
+            <div className="flex flex-wrap items-center gap-2">
               {phase ? (
                 <div className="w-[260px] space-y-1.5">
                   <div className="flex justify-between gap-2 text-xs text-muted-foreground" role="status">
@@ -371,14 +378,28 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   exportController.current = controller;
                   setIsRendering(true);
                   setError(null);
+                  setErrorId(undefined);
                   setPhase('Preparing export');
                   setRatio(0);
+                  let lastPhase = 'Preparing export';
+                  let lastRatio = 0;
+                  const startedAt = Date.now();
+                  const exportDetails = { ...projectDiagnosticSummary(useProjectStore.getState()), selectedSegments: selectedSegments.length,
+                    selectedDurationSec: selectedSegments.reduce((sum, segment) => sum + Math.max(0, segment.endTimeSec - segment.startTimeSec), 0),
+                    addGap, native: !!window.electron, selectedMainLabelCount: mainLabelIds.length, selectedSecondaryLabelCount: secondaryIds.length };
+                  const operationId = recordDiagnostic('info', 'export', 'export.started', exportDetails);
                   try {
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (selected)', selectedSegments.length);
                     const options = {
                       addGap, mainLabels, signal: controller.signal,
-                      onProgress: (p: string, r: number) => { if (controller.signal.aborted) return; setPhase(r >= 1 ? "Preparing download" : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0)))); },
+                      onProgress: (p: string, r: number) => {
+                        if (controller.signal.aborted) return;
+                        if (p !== lastPhase) recordDiagnostic('info', 'export', 'export.phase', { operationId, phase: p, ratio: r });
+                        lastPhase = p; lastRatio = Number.isFinite(r) ? r : lastRatio;
+                        setDiagnosticContext('export', { operationId, phase: lastPhase, ratio: lastRatio });
+                        setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0))));
+                      },
                     };
                     const blob = clips
                       ? await exportClipSequence(clips, clipSources.map((source) => source.file ?? source.url), selectedSegments, options)
@@ -387,9 +408,13 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     downloadBlob('export.mp4', blob);
                     setPhase('Export ready');
                     setRatio(1);
+                    recordDiagnostic('info', 'export', 'export.completed', { operationId, bytes: blob.size, elapsedMs: Date.now() - startedAt });
                   } catch (e) {
-                    if (controller.signal.aborted) { setPhase('Export cancelled'); setError(null); }
-                    else setError(e instanceof Error ? e.message : "Export failed");
+                    if (controller.signal.aborted) { setPhase('Export cancelled'); setError(null); recordDiagnostic('info', 'export', 'export.cancelled', { operationId, phase: lastPhase, ratio: lastRatio }); }
+                    else {
+                      const incidentId = recordDiagnostic('error', 'export', 'export.failed', { ...exportDetails, operationId, phase: lastPhase, ratio: lastRatio, elapsedMs: Date.now() - startedAt }, e);
+                      setErrorId(incidentId); setError(e instanceof Error && e.message ? e.message : 'Export failed');
+                    }
                     console.error('[Export Studio] export failed', e);
                   } finally {
                     setIsRendering(false); setIsCancelling(false); exportController.current = null;
@@ -406,5 +431,3 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
     </Dialog>
   );
 }
-
-

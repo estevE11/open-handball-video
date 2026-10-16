@@ -1,4 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { recordDiagnostic, recordEngineLog } from '@/lib/diagnostics';
 import workerURL from '@ffmpeg/ffmpeg/worker?worker&url';
 import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
@@ -29,6 +30,7 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
   loadingInstance = ffmpeg;
   const currentGeneration = generation;
   ffmpeg.on('log', ({ type, message }) => {
+    recordEngineLog(`[${type}] ${message}`);
     // Forward ffmpeg internal logs to the console for debugging.
     const fn = type === 'fferr' ? console.warn : console.debug;
     fn(`[ffmpeg:${type}] ${message}`);
@@ -47,6 +49,8 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
     try {
       const head = async (url: string) => {
         const r = await fetch(url, { method: 'HEAD' });
+        recordDiagnostic(r.ok ? 'info' : 'warning', 'export', 'engine.asset_check', { kind: url === classWorkerURL ? 'worker' : url === coreURL ? 'core' : 'wasm',
+          ok: r.ok, status: r.status, contentType: r.headers.get('content-type'), contentLength: r.headers.get('content-length') });
         return {
           url,
           ok: r.ok,
@@ -61,6 +65,7 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
         wasm: await head(wasmURL),
       });
     } catch (e) {
+      recordDiagnostic('warning', 'export', 'engine.preflight_failed', undefined, e);
       console.warn('[ffmpeg] preflight failed (non-fatal)', e);
     }
     if (generation !== currentGeneration) throw new DOMException('Export cancelled', 'AbortError');
@@ -69,6 +74,7 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
     try {
       // Add a slow-load warning so we know it's truly hanging.
       const warnTimer = window.setTimeout(() => {
+        recordDiagnostic('warning', 'export', 'engine.load_slow', { elapsedMs: 10_000 });
         console.warn('[ffmpeg] load() still pending after 10s', { classWorkerURL, coreURL, wasmURL });
       }, 10_000);
       try {
@@ -77,6 +83,8 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
         window.clearTimeout(warnTimer);
       }
     } catch (e) {
+      if (generation !== currentGeneration) recordDiagnostic('info', 'export', 'engine.load_cancelled');
+      else recordDiagnostic('error', 'export', 'engine.load_failed', { elapsedMs: Math.round(performance.now() - t0) }, e);
       console.error('[ffmpeg] load() failed', e);
       ffmpeg.terminate();
       if (generation === currentGeneration) { loadPromise = null; loadingInstance = null; }
@@ -89,10 +97,9 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
     if (generation !== currentGeneration) throw new DOMException('Export cancelled', 'AbortError');
     loadingInstance = null;
     ffmpegSingleton = ffmpeg;
+    recordDiagnostic('info', 'export', 'engine.loaded', { elapsedMs: Math.round(performance.now() - t0) });
     return ffmpeg;
   })();
 
   return loadPromise;
 }
-
-

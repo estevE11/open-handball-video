@@ -6,6 +6,7 @@ import { fetchFile } from '@ffmpeg/util';
 import type { MainLabel, Segment } from '@/types/project';
 import { withBrowserExport } from '@/lib/browserExportSession';
 import { checkExportCancelled } from '../../electron/exportCancellation';
+import { recordDiagnostic } from '@/lib/diagnostics';
 
 function toFixedSec(v: number): string {
   return (Math.max(0, v) || 0).toFixed(3);
@@ -63,6 +64,7 @@ export async function exportFilteredSegmentsToMp4(
       return blob;
     } catch (err) {
       checkExportCancelled(opts.signal);
+      recordDiagnostic('error', 'export', 'native.failed', undefined, err);
       console.error('[export] native export failed', err);
       throw new Error(`Native export failed: ${err}. Ensure FFmpeg is installed on your system.`);
     }
@@ -109,6 +111,7 @@ export async function exportFilteredSegmentsToMp4(
     } catch (err) {
       checkExportCancelled(opts.signal);
       console.warn('[export] failed to load font, overlay might look poor or fail', err);
+      recordDiagnostic('warning', 'export', 'font.load_failed', undefined, err);
     }
 
     const inputName = `input_${Date.now()}.mp4`;
@@ -146,6 +149,7 @@ export async function exportFilteredSegmentsToMp4(
       console.error('[export] no valid segments after filtering');
       throw new Error('No segments to export.');
     }
+    if (valid.length !== segments.length) recordDiagnostic('warning', 'export', 'segments.skipped', { requestedCount: segments.length, validCount: valid.length, minimumDurationSec: 0.02 });
     console.info('[export] segments (valid)', valid.length);
 
     // If addGap is enabled, we create a 0.5s black clip matching the first clip's settings
@@ -160,11 +164,13 @@ export async function exportFilteredSegmentsToMp4(
       temporaryFiles.add(probeName);
       await safeDelete(ffmpeg, probeName);
       // Validate fresh output: this WASM core's ffprobe can report -1 on success.
+      recordDiagnostic('info', 'export', 'gap.audio_probe_started');
       await ffmpeg.ffprobe(['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', inputName, '-o', probeName]);
       const probe = JSON.parse(new TextDecoder().decode(await ffmpeg.readFile(probeName) as Uint8Array)) as {
         streams: { codec_type: string }[];
       };
       const hasAudio = probe.streams.some((stream) => stream.codec_type === 'audio');
+      recordDiagnostic('info', 'export', 'gap.audio_probe_completed', { hasAudio, streamCount: probe.streams.length });
       // Preserve video-only sources; only mute an audio stream when one exists.
       await runFFmpeg([
         '-hide_banner',
@@ -321,5 +327,3 @@ export async function exportFilteredSegmentsToMp4(
   return result;
   });
 }
-
-

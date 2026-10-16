@@ -1,9 +1,13 @@
 import { checkExportCancelled, exportCancelled } from '../../electron/exportCancellation';
 import type { FFmpeg } from '@ffmpeg/ffmpeg';
 import { monotonicProgress, type ExportProgress } from '../../electron/exportProgress';
+import { recordDiagnostic } from '@/lib/diagnostics';
 
 /** Listener lifetime matches one command, even when the shared engine is reused. */
 export async function runWasmExportCommand(ffmpeg: Pick<FFmpeg, 'on' | 'off' | 'exec'>, args: string[], onTime?: (seconds: number) => void) {
+  const details = { options: args.filter(arg => arg.startsWith('-')), videoCodec: args.includes('-c:v') ? args[args.indexOf('-c:v') + 1] : undefined,
+    audioCodec: args.includes('-c:a') ? args[args.indexOf('-c:a') + 1] : undefined };
+  recordDiagnostic('info', 'export', 'ffmpeg.command_started', details);
   const listener = ({ time }: { time: number }) => {
     // The core can emit INT64_MAX before the first frame has a timestamp.
     if (Number.isSafeInteger(time) && time >= 0) onTime?.(time / 1_000_000);
@@ -12,6 +16,9 @@ export async function runWasmExportCommand(ffmpeg: Pick<FFmpeg, 'on' | 'off' | '
   try {
     const code = await ffmpeg.exec(args);
     if (code !== 0) throw new Error(`Video export failed (FFmpeg exit code ${code}).`);
+  } catch (error) {
+    recordDiagnostic('warning', 'export', 'ffmpeg.command_failed', details, error);
+    throw error;
   } finally {
     if (onTime) ffmpeg.off('progress', listener);
   }

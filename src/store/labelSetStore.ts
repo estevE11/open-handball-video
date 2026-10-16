@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { recordDiagnostic } from '@/lib/diagnostics';
 import { coerceLabelSet } from '../../electron/labelSets';
 import { createEmptyProject } from '@/lib/projectDefaults';
 import { createId } from '@/lib/ids';
@@ -41,7 +42,7 @@ export async function loadLabelSets() {
           }
         }
         useLabelSetStore.setState({ loaded: true });
-      } catch (error) { useLabelSetStore.setState({ error: storageError(error) }); throw error; }
+      } catch (error) { recordDiagnostic('error', 'storage', 'label_sets.load_failed', undefined, error); useLabelSetStore.setState({ error: storageError(error) }); throw error; }
       finally { loading = undefined; }
     })();
   }
@@ -57,7 +58,7 @@ export function saveLabelSet(raw: LabelSet): Promise<void> {
       if (electron) await electron.saveLabelSet(labelSet);
       else await saveBrowserLabelSet(labelSet);
       useLabelSetStore.setState({ error: '' });
-    } catch (error) { useLabelSetStore.setState({ error: storageError(error) }); throw error; }
+    } catch (error) { recordDiagnostic('error', 'save', 'label_set.save_failed', undefined, error); useLabelSetStore.setState({ error: storageError(error) }); throw error; }
     finally { useLabelSetStore.setState((state) => ({ pending: state.pending - 1 })); }
   });
   useLabelSetStore.setState((state) => ({ sets: [...state.sets.filter((set) => set.id !== labelSet.id), labelSet], pending: state.pending + 1 }));

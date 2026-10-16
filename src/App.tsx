@@ -11,6 +11,8 @@ import { TimelinePanel } from '@/components/app/TimelinePanel';
 import { TopBar } from '@/components/app/TopBar';
 import { VideoPanel } from '@/components/app/VideoPanel';
 import { StorageStatus } from '@/components/app/StorageStatus';
+import { DiagnosticsButton } from '@/components/app/DiagnosticsButton';
+import { projectDiagnosticSummary, setDiagnosticContext, traceDiagnosticTask } from '@/lib/diagnostics';
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -25,14 +27,16 @@ import type { ConfigureMatch, MatchDetails } from '@/lib/library';
 
 let saves = Promise.resolve();
 function saveProject(data: ProjectData) {
-  saves = saves.catch(() => {}).then(async () => {
+  saves = saves.catch(() => {}).then(() => traceDiagnosticTask('save', 'autosave', { ...projectDiagnosticSummary(data), native: !!window.electron }, async () => {
+    setDiagnosticContext('save', { state: 'saving', time: new Date().toISOString() });
     await flushLabelSets();
     if (window.electron) {
       if (data.videoMeta && !(await window.electron.saveProject(data.electronProjectKey ?? data.videoMeta.fileName, data))) {
         throw new Error('Could not save this project. Please retry.');
       }
     } else await saveBrowserProject(data);
-  });
+    setDiagnosticContext('save', { state: 'saved', time: new Date().toISOString() });
+  }).catch(error => { setDiagnosticContext('save', { state: 'failed', time: new Date().toISOString() }); throw error; }));
   return saves;
 }
 
@@ -146,6 +150,7 @@ export default function App() {
           // Trigger the same tracked save path, including unload protection.
           useProjectStore.setState({ updatedAtMs: Date.now() });
         }}>{t("Retry save")}</button>}
+        {saveError && <span className="ml-3 inline-flex"><DiagnosticsButton /></span>}
       </div>
       <AnalysisLayout sidebar={<EventLogPanel />} player={<VideoPanel />} timeline={<TimelinePanel />} />
       <RequireVideoModal onBack={() => void backToLibrary()} />

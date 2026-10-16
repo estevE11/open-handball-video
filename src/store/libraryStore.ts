@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { recordDiagnostic } from '@/lib/diagnostics';
 import { coerceCatalog, coerceMatchMetadata, emptyCatalog, type LibraryChange } from '../../electron/libraryCatalog';
 import { changeBrowserCatalog, getBrowserCatalog, storageError } from '@/lib/browserStorage';
 import { createId } from '@/lib/ids';
@@ -16,7 +17,7 @@ export async function loadLibraryCatalog(force = false) {
     try {
       const catalog = window.electron ? await window.electron.getLibraryCatalog?.() ?? emptyCatalog() : await getBrowserCatalog();
       useLibraryStore.setState({ catalog: coerceCatalog(catalog), loaded: true, backend, error: '' });
-    } catch (error) { useLibraryStore.setState({ error: storageError(error) }); throw error; }
+    } catch (error) { recordDiagnostic('error', 'storage', 'catalog.load_failed', undefined, error); useLibraryStore.setState({ error: storageError(error) }); throw error; }
     finally { loading = undefined; }
   })();
   await loading;
@@ -28,7 +29,7 @@ export function changeLibrary(change: LibraryChange): Promise<void> {
       if (electron && !electron.changeLibraryCatalog) throw new Error('Restart the desktop app to manage folders and teams.');
       const catalog = electron ? await electron.changeLibraryCatalog!(change) : await changeBrowserCatalog(change);
       useLibraryStore.setState({ catalog: coerceCatalog(catalog), error: '', loaded: true, backend: electron ? 'electron' : 'browser' });
-    } catch (error) { useLibraryStore.setState({ error: storageError(error) }); throw error; }
+    } catch (error) { recordDiagnostic('error', 'save', 'catalog.save_failed', { kind: change.kind }, error); useLibraryStore.setState({ error: storageError(error) }); throw error; }
   });
   return writes;
 }

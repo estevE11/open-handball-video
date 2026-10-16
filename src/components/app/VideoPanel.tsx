@@ -1,4 +1,6 @@
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
+import { recordDiagnostic } from '@/lib/diagnostics';
+import { DiagnosticsButton } from './DiagnosticsButton';
 import { advanceReviewAt, useReviewStore } from '@/store/reviewStore';
 import { Pause, Play, SkipBack, SkipForward, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -173,7 +175,12 @@ export function VideoPanel() {
                 if (hasNextClip && activeClip) setCurrentTimeSec(activeClip.end);
                 else setIsPlaying(false);
               }}
-              onError={() => { setIsPlaying(false); setPlaybackError('This clip could not be played. Check that the original video is supported by your browser.'); }}
+              onError={(event) => {
+                const media = event.currentTarget;
+                recordDiagnostic('error', 'media', 'playback.failed', { code: media.error?.code, readyState: media.readyState,
+                  networkState: media.networkState, width: media.videoWidth, height: media.videoHeight }, media.error?.message || 'Media playback failed');
+                setIsPlaying(false); setPlaybackError('This clip could not be played. Check that the original video is supported by your browser.');
+              }}
               controls={false}
             />
           ) : (
@@ -199,7 +206,7 @@ export function VideoPanel() {
               try {
                 if (window.electron) setVideoFile(file, URL.createObjectURL(file));
                 else await attachBrowserVideo(file);
-              } catch (err) { window.alert(message(storageError(err))); return; }
+              } catch (err) { recordDiagnostic('error', 'media', 'attachment.failed', undefined, err); window.alert(message(storageError(err))); return; }
               // Detect FPS via ffprobe (async). Only apply if this is still the active file.
               try {
                 const fps = await probeVideoFps(file);
@@ -207,6 +214,7 @@ export function VideoPanel() {
                   setVideoFps(fps);
                 }
               } catch (err) {
+                recordDiagnostic('warning', 'media', 'fps_probe.failed', undefined, err);
                 console.warn('[video] fps probe failed', err);
               }
             }}
@@ -214,7 +222,7 @@ export function VideoPanel() {
         </div>
 
         <div className="rounded-md border bg-card p-2">
-          {playbackError && <p role="alert" className="mb-2 text-xs text-destructive">{message(playbackError)}</p>}
+          {playbackError && <div role="alert" className="mb-2 space-y-2 text-xs text-destructive"><p>{message(playbackError)}</p><DiagnosticsButton /></div>}
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="icon" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? t("Pause") : t("Play")}>
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}

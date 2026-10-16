@@ -3,6 +3,7 @@ import { Undo2, Redo2, ChevronLeft, Download, Settings, Upload } from 'lucide-re
 import { useMemo } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { DiagnosticsButton } from './DiagnosticsButton';
 import { Separator } from '@/components/ui/separator';
 import { useProjectStore } from '@/store/projectStore';
 import { useVideoStore } from '@/store/videoStore';
@@ -57,6 +58,7 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <DiagnosticsButton compact />
         <Button variant="ghost" size="icon" aria-label={t("Undo edit")} title={t("Undo (Ctrl/Cmd+Z)")} disabled={!canUndo} onClick={() => useProjectStore.getState().undo()}><Undo2 className="h-4 w-4" /></Button>
         <Button variant="ghost" size="icon" aria-label={t("Redo edit")} title={t("Redo (Ctrl/Cmd+Shift+Z)")} disabled={!canRedo} onClick={() => useProjectStore.getState().redo()}><Redo2 className="h-4 w-4" /></Button>
         {!window.electron && (
@@ -93,5 +95,4 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
     </div>
   );
 }
-
 

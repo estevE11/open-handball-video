@@ -3,6 +3,7 @@ import { applyLibraryChange, coerceCatalog, emptyCatalog, type LibraryChange } f
 import { createId } from '@/lib/ids';
 import type { LabelSet, ProjectData } from '@/types/project';
 import { coerceProjectData } from '@/lib/projectIo';
+import { projectDiagnosticSummary, recordDiagnostic, setDiagnosticContext, traceDiagnosticTask } from '@/lib/diagnostics';
 
 export type StoredProject = {
   id: string;
@@ -33,8 +34,8 @@ function openDatabase(): Promise<IDBDatabase> {
         db.onversionchange = () => { db.close(); database = undefined; };
         resolve(db);
       };
-      request.onerror = () => { database = undefined; reject(request.error); };
-      request.onblocked = () => { database = undefined; reject(new Error('Close other app tabs and retry opening storage.')); };
+      request.onerror = () => { database = undefined; recordDiagnostic('error', 'storage', 'database.open_failed', { version: 3 }, request.error); reject(request.error); };
+      request.onblocked = () => { database = undefined; recordDiagnostic('warning', 'storage', 'database.upgrade_blocked', { version: 3 }); reject(new Error('Close other app tabs and retry opening storage.')); };
     });
   }
   return database;
@@ -42,15 +43,21 @@ function openDatabase(): Promise<IDBDatabase> {
 
 function completed(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
+    let reported = false;
+    const fail = () => {
+      const error = tx.error ?? new Error('Storage transaction was cancelled.');
+      if (!reported) recordDiagnostic('error', 'storage', 'transaction.failed', { stores: Array.from(tx.objectStoreNames), mode: tx.mode }, error);
+      reported = true; reject(error);
+    };
     tx.oncomplete = () => resolve();
-    tx.onabort = () => reject(tx.error ?? new Error('Storage transaction was cancelled.'));
-    tx.onerror = () => reject(tx.error ?? new Error('Could not write browser storage.'));
+    tx.onabort = fail;
+    tx.onerror = fail;
   });
 }
 function result<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => { recordDiagnostic('error', 'storage', 'request.failed', undefined, request.error); reject(request.error); };
   });
 }
 
@@ -63,11 +70,17 @@ export function storageError(error: unknown): string {
 
 export async function listBrowserProjects(): Promise<StoredProject[]> {
   const db = await openDatabase();
-  return (await result<StoredProject[]>(db.transaction('projects').objectStore('projects').getAll()))
+  const projects = (await result<StoredProject[]>(db.transaction('projects').objectStore('projects').getAll()))
     .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  setDiagnosticContext('library', { checkedAt: new Date().toISOString(), projectCount: projects.length,
+    projectsWithMedia: projects.filter(project => project.videoBytes > 0).length });
+  return projects;
 }
 
 export async function loadBrowserProject(id: string): Promise<{ data: ProjectData; file?: File; files: File[] }> {
+  return traceDiagnosticTask('storage', 'project.load', {}, () => readBrowserProject(id));
+}
+async function readBrowserProject(id: string): Promise<{ data: ProjectData; file?: File; files: File[] }> {
   const db = await openDatabase();
   const tx = db.transaction(['projects', 'videos']);
   const project = await result<StoredProject | undefined>(tx.objectStore('projects').get(id));
@@ -75,6 +88,7 @@ export async function loadBrowserProject(id: string): Promise<{ data: ProjectDat
   const blob = project.videoBytes ? await result<Blob | Blob[] | undefined>(tx.objectStore('videos').get(project.videoKey ?? id)) : undefined;
   const data = coerceProjectData(JSON.parse(project.json));
   const blobs = blob ? (Array.isArray(blob) ? blob : [blob]) : [];
+  if (!blobs.length && data.videoMeta) recordDiagnostic('warning', 'media', 'project.media_unavailable', { expectedStoredBytes: project.videoBytes, expectedClips: data.clips?.length ?? 1 });
   const metadata = data.clips ?? (data.videoMeta ? [data.videoMeta] : []);
   if (blobs.length && blobs.length !== metadata.length) throw new Error('Some project clips are missing from storage. Restore the original clips.');
   const files = blobs.map((item, index) => new File([item], metadata[index].fileName, {
@@ -86,6 +100,9 @@ export async function loadBrowserProject(id: string): Promise<{ data: ProjectDat
 // Separate stores let autosave update only JSON, without rewriting large videos.
 // Video imports/replacements commit both records atomically.
 export async function saveBrowserProject(data: ProjectData, file?: File | File[]): Promise<void> {
+  return traceDiagnosticTask('storage', 'project.save', { ...projectDiagnosticSummary(data), includesMedia: !!file }, () => writeBrowserProject(data, file));
+}
+async function writeBrowserProject(data: ProjectData, file?: File | File[]): Promise<void> {
   const files = file ? (Array.isArray(file) ? file : [file]) : undefined;
   if (files && (files.length !== (data.clips?.length ?? 1) || files.length === 0)) {
     throw new Error('Save all project clips together.');
@@ -212,7 +229,12 @@ export async function getBrowserCapacity() {
 }
 
 export async function requestPersistentStorage(): Promise<boolean> {
-  return navigator.storage?.persist?.().catch(() => false) ?? false;
+  if (!navigator.storage?.persist) { recordDiagnostic('warning', 'storage', 'persistence.unsupported'); return false; }
+  try {
+    const granted = await navigator.storage.persist();
+    recordDiagnostic(granted ? 'info' : 'warning', 'storage', granted ? 'persistence.granted' : 'persistence.not_granted');
+    return granted;
+  } catch (error) { recordDiagnostic('warning', 'storage', 'persistence.request_failed', undefined, error); return false; }
 }
 
 export function formatBytes(bytes: number): string {

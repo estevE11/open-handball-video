@@ -38,6 +38,12 @@ Videos stay on your device and are not uploaded to Vercel. Browser storage belon
 
 Electron continues reading videos and project JSON from `Documents/open-handball-video`. Native exports use isolated temporary directories, return the completed video for download, and remove intermediates after success or failure.
 
+## Beta diagnostics
+
+Use **Share diagnostics** in the library header, the editor's bug button, or an error message to preview, copy, or download a JSON diagnostic report. Send the report to the development team with the steps that led to the problem. Reports include the app version and build commit, browser/OS user agent, storage API support and persistence status, safe media statistics, recent save/export activity, error stacks, and the export engine's recent output. Export errors also retain the last phase and progress, selected clip count, and gap setting. The export error message is shown in full rather than truncated.
+
+Diagnostics are local and are never sent automatically. Videos and full project JSON are excluded; common file paths, source URLs, credentials, and text overlays are redacted. The history keeps up to 120 events and 80 engine log lines, with a 200,000-character persisted budget. It survives reloads when localStorage is available, and stays usable in memory if browser storage is full or blocked. A report is a troubleshooting aid, not a project backup; clearing site data may remove diagnostic history too. Production builds generate hidden source maps; retained script filenames and line/column positions can be mapped back to source for the reported build. Historical error entries retain their build identity.
+
 ## Playback and clip titles
 
 Playback speeds are 0.5×, 1×, 2×, 2.5×, and 3×. Tap Space to play or pause. Hold Space for temporary 1× playback; release it to restore the selected speed and previous playing or paused state. Hold J also temporarily switches to 1×. Left/right arrows seek backward/forward five seconds. Comma steps one frame backward; period steps one frame forward. Frame stepping pauses playback and uses the current source clip's frame rate (or the configured fallback). Playback shortcuts work even when player buttons, the speed selector, or the timeline slider have focus; use Enter or a click to open the speed menu. These shortcuts leave text editing and dialog controls alone.
