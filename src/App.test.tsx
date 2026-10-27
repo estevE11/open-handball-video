@@ -97,6 +97,7 @@ it('adds video, autosaves edits before immediate navigation, and restores projec
   });
   fireEvent.click(screen.getByRole('button', { name: 'Back to projects' }));
   await screen.findByRole('button', { name: 'Open project' });
+  await waitFor(() => expect(screen.getByText(/About .* more projects/)).toBeTruthy());
   expect((await loadBrowserProject(id)).data.segments).toHaveLength(1);
   expect((await loadBrowserProject(id)).data.settings.fps).toBe(60);
   app.unmount();
@@ -108,7 +109,7 @@ it('adds video, autosaves edits before immediate navigation, and restores projec
   expect(useProjectStore.getState().session.videoFile?.name).toBe('match.mp4');
   expect(useProjectStore.getState().segments).toHaveLength(1);
   expect(await useProjectStore.getState().session.videoFile?.text()).toBe('test-video-bytes');
-  await waitFor(() => expect(screen.getByText(/About .* more projects/)).toBeTruthy());
+  expect(screen.queryByLabelText('Browser storage')).toBeNull();
 });
 
 it('imports JSON as a separate project and stores its attached video', async () => {

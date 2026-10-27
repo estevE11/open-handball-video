@@ -10,7 +10,6 @@ import { SettingsModal } from '@/components/app/SettingsModal';
 import { TimelinePanel } from '@/components/app/TimelinePanel';
 import { TopBar } from '@/components/app/TopBar';
 import { VideoPanel } from '@/components/app/VideoPanel';
-import { StorageStatus } from '@/components/app/StorageStatus';
 import { DiagnosticsButton } from '@/components/app/DiagnosticsButton';
 import { projectDiagnosticSummary, setDiagnosticContext, traceDiagnosticTask } from '@/lib/diagnostics';
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys';
@@ -143,7 +142,6 @@ export default function App() {
   return (
     <><div className="flex h-full w-full min-w-0 flex-col bg-background text-foreground">
       <TopBar onOpenSettings={() => setSettingsOpen(true)} onOpenExport={() => setExportOpen(true)} showBackButton onBack={() => void backToLibrary()} />
-      {!window.electron && <StorageStatus compact />}
       <div className="px-3 py-1 text-xs" role={saveError ? 'alert' : 'status'}>
         {message(saveError || saveStatus)}
         {saveError && <button className="ml-3 underline" onClick={() => {
