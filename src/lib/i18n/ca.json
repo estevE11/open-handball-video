@@ -356,5 +356,7 @@
   "The app encountered a problem.": "L’aplicació ha trobat un problema.",
   "Share a diagnostic report to help us investigate, then reload the app.": "Comparteix un informe de diagnòstic per ajudar-nos a investigar i després torna a carregar l’aplicació.",
   "Reload app": "Torna a carregar l’aplicació",
-  "Share this report to help us investigate the export failure.": "Comparteix aquest informe per ajudar-nos a investigar l’error d’exportació."
+  "Share this report to help us investigate the export failure.": "Comparteix aquest informe per ajudar-nos a investigar l’error d’exportació.",
+  "Share report": "Comparteix l’informe",
+  "Please share a report with us so we can investigate this error.": "Comparteix un informe amb nosaltres perquè puguem investigar aquest error."
 }

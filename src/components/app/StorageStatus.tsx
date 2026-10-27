@@ -2,6 +2,7 @@ import { useTranslation, useTranslatedMessage, useLanguageStore } from '@/lib/i1
 import { useEffect, useState } from 'react';
 import { ChevronDown, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ErrorReportAction } from './DiagnosticsButton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { formatBytes, getBrowserCapacity, requestPersistentStorage, storageError } from '@/lib/browserStorage';
 
@@ -35,7 +36,7 @@ export function StorageStatus({ compact = false }: { compact?: boolean }) {
   }, []);
 
   return <div className="rounded-md border bg-card px-4 py-3 text-sm" aria-label={t("Browser storage")}>
-    {error ? <p role="alert">{message(error)}</p> : capacity ? <>
+    {error ? <div role="alert" className="space-y-2"><p>{message(error)}</p><ErrorReportAction /></div> : capacity ? <>
       {!capacity.persistent ? <details open={!compact} className="group mb-4 rounded-lg border border-amber-500/60 bg-amber-500/10 p-4 sm:p-5">
         <summary className="flex cursor-pointer list-none items-center gap-3 text-base font-semibold text-amber-800 dark:text-amber-300 [&::-webkit-details-marker]:hidden">
           <ShieldAlert className="h-6 w-6 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />

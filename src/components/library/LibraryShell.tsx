@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Folder, FolderPlus, Library, Search, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ErrorReportAction } from '@/components/app/DiagnosticsButton';
 import { Input } from '@/components/ui/input';
 import { FolderDialog } from './FolderDialog';
 import { TeamsDialog } from './TeamsDialog';
@@ -49,7 +50,7 @@ export function LibraryShell({ scope, onScopeChange, search, onSearchChange, tea
         <div className="w-full sm:w-[220px]"><TeamPicker label={t('Filter by team')} value={teamId} onChange={onTeamChange} allowCreate={false} /></div>
         {(search || teamId) && <Button variant="ghost" onClick={() => { onSearchChange(''); onTeamChange(''); }}>{t('Clear filters')}</Button>}
       </div>
-      {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
+      {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{message(error)}</p><ErrorReportAction /></div>}
       {childrenFolders.length > 0 && <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{childrenFolders.map(folder => <Button key={folder.id} className="justify-start gap-2" variant="outline" onClick={() => onScopeChange(folder.id)}><Folder className="h-4 w-4 shrink-0" /><span className="truncate">{folder.name}</span></Button>)}</div>}
       {children}
     </div>

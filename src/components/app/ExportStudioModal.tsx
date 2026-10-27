@@ -17,7 +17,7 @@ import { formatTimecode } from '@/lib/time';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { useProjectStore } from '@/store/projectStore';
-import { DiagnosticsButton } from './DiagnosticsButton';
+import { DiagnosticsButton, ErrorReportAction } from './DiagnosticsButton';
 import { projectDiagnosticSummary, recordDiagnostic, setDiagnosticContext } from '@/lib/diagnostics';
 
 type ExportStudioModalProps = {
@@ -345,7 +345,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
           {error && <div role="alert" className="min-w-0 space-y-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">
             <p className="whitespace-pre-wrap break-words text-sm text-destructive">{message(error)}</p>
-            <div className="flex flex-wrap items-center gap-3"><DiagnosticsButton errorId={errorId} /><span className="text-xs text-muted-foreground">{t('Share this report to help us investigate the export failure.')}</span></div>
+            <ErrorReportAction errorId={errorId} />
           </div>}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">

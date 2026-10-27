@@ -1,7 +1,7 @@
 import { projectWithLabelSet } from '@/lib/labelSets';
 import { resolveProjectLabelSet } from '@/store/labelSetStore';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
-import { DiagnosticsButton } from '@/components/app/DiagnosticsButton';
+import { DiagnosticsButton, ErrorReportAction } from '@/components/app/DiagnosticsButton';
 import { recordDiagnostic } from '@/lib/diagnostics';
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
@@ -80,7 +80,7 @@ export function BrowserDashboard({ onOpen, onManageLabelSets, chooseLabelSet, co
       </div>
       <Button className="ml-auto" variant="outline" onClick={onManageLabelSets}>{t('Manage label sets')}</Button>
     </div>
-    {error && <div role="alert" className="space-y-2 rounded-md border border-destructive p-3 text-sm"><p>{message(error)}</p><DiagnosticsButton /></div>}
+    {error && <div role="alert" className="space-y-2 rounded-md border border-destructive p-3 text-sm"><p>{message(error)}</p><ErrorReportAction /></div>}
     <input ref={videoInput} type="file" multiple accept="video/*,.mp4,.mov,.webm,.mkv" className="hidden" aria-label={t("Add video file")} onChange={(event) => {
       const files = Array.from(event.target.files ?? []); event.target.value = '';
       if (!files.length) return;

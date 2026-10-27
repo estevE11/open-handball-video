@@ -42,11 +42,12 @@ it('shows live progress, keeps failure below 100%, and resets correctly for a su
   await act(async () => reject(new Error('Encoding failed')));
   expect(screen.getByText('Export failed')).toBeTruthy();
   expect(screen.getByRole('alert').textContent).toContain('Encoding failed');
-  expect(screen.getByRole('button', { name: 'Share diagnostics' })).toBeTruthy();
+  expect(within(screen.getByRole('alert')).getByRole('button', { name: 'Share report' })).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('Please share a report with us so we can investigate this error.');
   const diagnostics = await createDiagnosticReport();
   expect(diagnostics.events.at(-1)).toMatchObject({ code: 'export.failed', details: { phase: 'Preparing download', ratio: 1, selectedSegments: 1 }, error: { message: 'Encoding failed' } });
   expect(diagnostics.engineLogs.at(-1)?.message).toContain('unsupported pixel format');
-  fireEvent.click(screen.getByRole('button', { name: 'Share diagnostics' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Share report' }));
   const reportDialog = await screen.findByRole('dialog', { name: 'Beta diagnostic report' });
   await waitFor(() => expect(reportDialog.querySelector('pre')).toBeTruthy());
   const shared = JSON.parse(reportDialog.querySelector('pre')!.textContent!);

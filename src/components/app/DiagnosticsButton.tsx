@@ -6,8 +6,9 @@ import { createDiagnosticReport, projectDiagnosticSummary } from '@/lib/diagnost
 import { useTranslation } from '@/lib/i18n';
 import { useProjectStore } from '@/store/projectStore';
 
-export function DiagnosticsButton({ compact = false, errorId }: { compact?: boolean; errorId?: string }) {
+export function DiagnosticsButton({ compact = false, errorId, forError = false }: { compact?: boolean; errorId?: string; forError?: boolean }) {
   const t = useTranslation();
+  const label = t(forError ? 'Share report' : 'Share diagnostics');
   const [open, setOpen] = useState(false);
   const [report, setReport] = useState<Awaited<ReturnType<typeof createDiagnosticReport>> | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -26,8 +27,8 @@ export function DiagnosticsButton({ compact = false, errorId }: { compact?: bool
     if (next) { setReport(null); setFeedback(''); setFailed(false); }
   }}>
     <DialogTrigger asChild>
-      <Button variant="outline" size={compact ? 'icon' : 'sm'} aria-label={t('Share diagnostics')} title={t('Share diagnostics')}>
-        <Bug className={`h-4 w-4 shrink-0 ${compact ? '' : 'mr-2'}`} aria-hidden="true" />{!compact && t('Share diagnostics')}
+      <Button variant={forError ? 'default' : 'outline'} size={compact ? 'icon' : 'sm'} aria-label={label} title={label}>
+        <Bug className={`h-4 w-4 shrink-0 ${compact ? '' : 'mr-2'}`} aria-hidden="true" />{!compact && label}
       </Button>
     </DialogTrigger>
     <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
@@ -61,4 +62,12 @@ export function DiagnosticsButton({ compact = false, errorId }: { compact?: bool
       {feedback && <p role="status" className="text-sm">{t(feedback as 'Report copied.' | 'Could not copy the report. Download it instead.' | 'Report download started.')}</p>}
     </DialogContent>
   </Dialog>;
+}
+
+export function ErrorReportAction({ errorId }: { errorId?: string }) {
+  const t = useTranslation();
+  return <div className="flex flex-wrap items-center gap-3">
+    <DiagnosticsButton errorId={errorId} forError />
+    <p className="text-xs text-muted-foreground">{t('Please share a report with us so we can investigate this error.')}</p>
+  </div>;
 }

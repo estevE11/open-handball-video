@@ -1,6 +1,6 @@
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { recordDiagnostic } from '@/lib/diagnostics';
-import { DiagnosticsButton } from './DiagnosticsButton';
+import { ErrorReportAction } from './DiagnosticsButton';
 import { advanceReviewAt, useReviewStore } from '@/store/reviewStore';
 import { Pause, Play, SkipBack, SkipForward, Upload, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -62,6 +62,25 @@ export function VideoPanel() {
 
   const canScrub = durationSec > 0;
   const sliderValue = isScrubbing ? scrubValue : [currentTimeSec];
+
+  function syncMediaDuration(media: HTMLVideoElement) {
+    if (media !== videoRef.current) return;
+    const reportedDuration = media.duration;
+    if (!Number.isFinite(reportedDuration) || reportedDuration <= 0) {
+      recordDiagnostic('warning', 'media', 'duration.unavailable', {
+        duration: Number.isNaN(reportedDuration) ? 'NaN' : Number.isFinite(reportedDuration) ? reportedDuration : 'Infinity',
+        readyState: media.readyState, networkState: media.networkState, width: media.videoWidth, height: media.videoHeight,
+      });
+      return;
+    }
+    const nextDuration = clips ? clips.reduce((sum, clip) => sum + clip.durationSec, 0) : reportedDuration;
+    if (nextDuration !== useVideoStore.getState().durationSec) {
+      recordDiagnostic('info', 'media', 'duration.available', { durationSec: reportedDuration, timelineDurationSec: nextDuration,
+        readyState: media.readyState, width: media.videoWidth, height: media.videoHeight });
+      setDurationSec(nextDuration);
+    }
+    if (!clips && useProjectStore.getState().videoMeta?.durationSec !== reportedDuration) setVideoDurationSec(reportedDuration);
+  }
 
   // Keep the HTMLVideoElement synced with store state.
   useEffect(() => {
@@ -157,16 +176,15 @@ export function VideoPanel() {
                 const el = e.currentTarget;
                 if (el !== videoRef.current) return;
                 setPlaybackError('');
+                syncMediaDuration(el);
                 if (clips) {
-                  setDurationSec(clips.reduce((sum, clip) => sum + clip.durationSec, 0));
-                  el.currentTime = Math.min(el.duration, Math.max(0, useVideoStore.getState().currentTimeSec - clipOffset));
-                } else {
-                  setDurationSec(el.duration || 0);
-                  if (el.duration) setVideoDurationSec(el.duration);
+                  const localTime = Math.max(0, useVideoStore.getState().currentTimeSec - clipOffset);
+                  if (Number.isFinite(el.duration) && el.duration > 0) el.currentTime = Math.min(el.duration, localTime);
                 }
                 el.playbackRate = playbackRate; el.muted = isMuted;
                 if (useVideoStore.getState().isPlaying) void el.play().catch(() => { if (videoRef.current === el) setIsPlaying(false); });
               }}
+              onDurationChange={(event) => syncMediaDuration(event.currentTarget)}
               onPlay={() => setIsPlaying(true)}
               onPause={(e) => { if (e.currentTarget === videoRef.current && !(e.currentTarget.ended && (hasNextClip || useReviewStore.getState().active))) setIsPlaying(false); }}
               onEnded={(event) => {
@@ -206,7 +224,7 @@ export function VideoPanel() {
               try {
                 if (window.electron) setVideoFile(file, URL.createObjectURL(file));
                 else await attachBrowserVideo(file);
-              } catch (err) { recordDiagnostic('error', 'media', 'attachment.failed', undefined, err); window.alert(message(storageError(err))); return; }
+              } catch (err) { recordDiagnostic('error', 'media', 'attachment.failed', undefined, err); setPlaybackError(storageError(err)); return; }
               // Detect FPS via ffprobe (async). Only apply if this is still the active file.
               try {
                 const fps = await probeVideoFps(file);
@@ -222,7 +240,7 @@ export function VideoPanel() {
         </div>
 
         <div className="rounded-md border bg-card p-2">
-          {playbackError && <div role="alert" className="mb-2 space-y-2 text-xs text-destructive"><p>{message(playbackError)}</p><DiagnosticsButton /></div>}
+          {playbackError && <div role="alert" className="mb-2 space-y-2 text-xs text-destructive"><p>{message(playbackError)}</p><ErrorReportAction /></div>}
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="icon" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? t("Pause") : t("Play")}>
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}

@@ -112,6 +112,29 @@ it('adds video, autosaves edits before immediate navigation, and restores projec
   expect(screen.queryByLabelText('Browser storage')).toBeNull();
 });
 
+it('updates the timeline when MOV duration changes after initial metadata', async () => {
+  const { useVideoStore } = await import('@/store/videoStore');
+  const app = render(<App />);
+  await screen.findByText('No saved projects yet.');
+  const file = new File(['test-video'], 'match.mov', { type: 'video/quicktime' });
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [file] } });
+  await enterVideo();
+  const player = app.container.querySelector('video')!;
+  Object.defineProperty(player, 'duration', { configurable: true, value: NaN });
+  Object.defineProperty(player, 'readyState', { configurable: true, value: 1 });
+  fireEvent.loadedMetadata(player);
+  expect(useVideoStore.getState().durationSec).toBe(0);
+  Object.defineProperty(player, 'duration', { configurable: true, value: 120 });
+  fireEvent.durationChange(player);
+  expect(useVideoStore.getState().durationSec).toBe(120);
+  expect(useProjectStore.getState().videoMeta?.durationSec).toBe(120);
+  Object.defineProperty(player, 'duration', { configurable: true, value: NaN });
+  fireEvent.durationChange(player);
+  expect(useVideoStore.getState().durationSec).toBe(120);
+  const id = useProjectStore.getState().projectId;
+  await waitFor(async () => expect((await loadBrowserProject(id)).data.videoMeta?.durationSec).toBe(120));
+});
+
 it('imports JSON as a separate project and stores its attached video', async () => {
   render(<App />);
   await screen.findByText('No saved projects yet.');

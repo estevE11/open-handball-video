@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { ErrorReportAction } from './DiagnosticsButton';
 
 type Item = { id: string; name: string };
 export function ClipOrderDialog({ items, onChange, onStart, onCancel, busy, error }: {
@@ -34,7 +35,7 @@ export function ClipOrderDialog({ items, onChange, onStart, onCancel, busy, erro
           <Button size="icon" variant="ghost" disabled={busy || index === items.length - 1} aria-label={t("Move {0} down", item.name)} onClick={() => move(item.id, index + 1)}><ArrowDown className="h-4 w-4" /></Button>
         </li>)}
       </ol>
-      {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
+      {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{message(error)}</p><ErrorReportAction /></div>}
       <div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={onCancel}>{t("Cancel")}</Button>
         <Button disabled={busy || !items.length} onClick={onStart}>{busy ? t("Preparing clips…") : t("Start tagging")}</Button></div>
     </DialogContent>

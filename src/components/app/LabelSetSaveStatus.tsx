@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { ErrorReportAction } from './DiagnosticsButton';
 import { loadLabelSets, saveLabelSet, useLabelSetStore } from '@/store/labelSetStore';
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 
@@ -13,6 +14,7 @@ export function LabelSetSaveStatus() {
       for (const set of useLabelSetStore.getState().sets) void saveLabelSet(set).catch(() => {});
       if (!useLabelSetStore.getState().loaded) void loadLabelSets().catch(() => {});
     }}>{t('Retry save')}</Button>}
+    {error && <div className="mt-2"><ErrorReportAction /></div>}
   </div>;
 }
 

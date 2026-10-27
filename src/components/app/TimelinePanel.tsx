@@ -52,10 +52,10 @@ export function TimelinePanel() {
   const updateSegmentTimes = useProjectStore((s) => s.updateSegmentTimes);
 
   const maxSegEnd = useMemo(() => {
-    return segments.reduce((m, s) => Math.max(m, s.endTimeSec), 0);
+    return segments.reduce((m, s) => Number.isFinite(s.endTimeSec) ? Math.max(m, s.endTimeSec) : m, 0);
   }, [segments]);
 
-  const totalSec = Math.max(durationSec || 0, maxSegEnd, 60);
+  const totalSec = Math.max(Number.isFinite(durationSec) ? durationSec : 0, maxSegEnd, 60);
   const timelineW = Math.ceil(totalSec * pps);
   const trackH = mainLabels.length * ROW_H;
 

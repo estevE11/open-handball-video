@@ -1,7 +1,7 @@
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { recordDiagnostic } from '@/lib/diagnostics';
-import { DiagnosticsButton } from './DiagnosticsButton';
+import { DiagnosticsButton, ErrorReportAction } from './DiagnosticsButton';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -78,9 +78,9 @@ export function RequireVideoModal({ onBack }: { onBack: () => void }) {
           }}
         />
 
-        <div className="flex justify-end gap-2">
-          <DiagnosticsButton />
-          {error && <p role="alert" className="text-sm text-destructive">{message(error)}</p>}
+        {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{message(error)}</p><ErrorReportAction /></div>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {!error && <DiagnosticsButton />}
           <Button disabled={busy} variant="ghost" onClick={onBack}>{t("Back to projects")}</Button>
           <Button disabled={busy} variant="secondary" onClick={() => fileInputRef.current?.click()}>
             {clips ? t("Choose original clips…") : t("Choose video…")}

@@ -2,7 +2,7 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { DiagnosticsButton } from './DiagnosticsButton';
+import { DiagnosticsButton, ErrorReportAction } from './DiagnosticsButton';
 import { clearDiagnostics, recordDiagnostic } from '@/lib/diagnostics';
 import { useLanguageStore } from '@/lib/i18n';
 
@@ -16,8 +16,9 @@ it('copies a report correlated with an incident without including private projec
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   const errorId = recordDiagnostic('error', 'export', 'export.failed', { phase: 'Rendering gaps', ratio: 0.1 }, new Error('Encoder failed'));
-  render(<DiagnosticsButton errorId={errorId} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Share diagnostics' }));
+  render(<ErrorReportAction errorId={errorId} />);
+  expect(screen.getByText('Please share a report with us so we can investigate this error.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Share report' }));
   await screen.findByRole('button', { name: 'Copy report' });
   fireEvent.click(screen.getByRole('button', { name: 'Copy report' }));
   await screen.findByText('Report copied.');

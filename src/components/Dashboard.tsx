@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { LanguageSelector } from '@/components/app/LanguageSelector';
-import { DiagnosticsButton } from '@/components/app/DiagnosticsButton';
+import { DiagnosticsButton, ErrorReportAction } from '@/components/app/DiagnosticsButton';
 import { recordDiagnostic } from '@/lib/diagnostics';
 import { ClipOrderDialog } from '@/components/app/ClipOrderDialog';
 import { LibraryShell } from '@/components/library/LibraryShell';
@@ -97,7 +97,7 @@ export function Dashboard({ onManageLabelSets, chooseLabelSet, configureMatch }:
       void run(async () => { const data = coerceProjectData(await readJsonFile(file)); data.projectId = createId(); data.electronProjectKey = data.projectId;
         data.folderId = scope === 'all' ? null : scope; data.match = await importMatchTeams(data.match); data.updatedAtMs = Date.now(); await save(data); await fetchVideos(); });
     }} />
-    {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{message(error)}</p><DiagnosticsButton /></div>}
+    {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{message(error)}</p><ErrorReportAction /></div>}
     <LibraryShell scope={scope} onScopeChange={setScope} search={search} onSearchChange={setSearch} teamId={teamId} onTeamChange={setTeamId}>
       {!entries.length && !loading && <div className="rounded-md border p-10 text-center text-muted-foreground"><p>{t('No videos found in "Documents/open-handball-video"')}</p><p className="mt-2 text-sm">{t('Add .mp4, .mov, or .webm files there.')}</p></div>}
       {entries.length > 0 && !filtered.length && !loading && <p className="rounded-md border p-8 text-center text-muted-foreground">{t('No videos match this folder or filter.')}</p>}
