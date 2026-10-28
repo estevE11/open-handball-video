@@ -216,7 +216,7 @@ export function TimelinePanel() {
                   className="absolute top-0 h-full border-l text-[10px] text-muted-foreground"
                   style={{ left: t * pps }}
                 >
-                  <div className="pl-1 pt-1">{t === 0 ? '0:00' : formatTimecode(t).slice(0, 5)}</div>
+                  <div className="whitespace-nowrap pl-1 pt-1">{formatTimecode(t)}</div>
                 </div>
               ))}
             </div>

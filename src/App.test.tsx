@@ -135,6 +135,25 @@ it('updates the timeline when MOV duration changes after initial metadata', asyn
   await waitFor(async () => expect((await loadBrowserProject(id)).data.videoMeta?.durationSec).toBe(120));
 });
 
+it('shows complete hour timestamps in the player and timeline ruler', async () => {
+  const { useVideoStore } = await import('@/store/videoStore');
+  const app = render(<App />);
+  await screen.findByText('No saved projects yet.');
+  const file = new File(['test-video'], 'long-match.mp4', { type: 'video/mp4' });
+  fireEvent.change(screen.getByLabelText('Add video file'), { target: { files: [file] } });
+  await enterVideo();
+  const player = app.container.querySelector('video')!;
+  Object.defineProperty(player, 'duration', { configurable: true, value: 4260 });
+  fireEvent.loadedMetadata(player);
+  act(() => useVideoStore.getState().setCurrentTimeSec(4205.123));
+  expect(screen.getByText('01:10:05.123 / 01:11:00.000')).toBeTruthy();
+  const ruler = screen.getByLabelText('Timeline tracks');
+  expect(within(ruler).getByText('01:10:00.000')).toBeTruthy();
+  expect(within(ruler).getByText('00.000')).toBeTruthy();
+  expect(within(ruler).getByText('02.000')).toBeTruthy();
+  expect(within(ruler).getByText('01:00.000')).toBeTruthy();
+});
+
 it('imports JSON as a separate project and stores its attached video', async () => {
   render(<App />);
   await screen.findByText('No saved projects yet.');
