@@ -3,6 +3,14 @@ import type { FFmpeg } from '@ffmpeg/ffmpeg';
 import { monotonicProgress, type ExportProgress } from '../../electron/exportProgress';
 import { recordDiagnostic } from '@/lib/diagnostics';
 
+/** A normal command failure can use a fallback; a thrown engine error cannot. */
+export class FFmpegExitError extends Error {
+  constructor(code: number) {
+    super(`Video export failed (FFmpeg exit code ${code}).`);
+    this.name = 'FFmpegExitError';
+  }
+}
+
 /** Listener lifetime matches one command, even when the shared engine is reused. */
 export async function runWasmExportCommand(ffmpeg: Pick<FFmpeg, 'on' | 'off' | 'exec'>, args: string[], onTime?: (seconds: number) => void) {
   const details = { options: args.filter(arg => arg.startsWith('-')), videoCodec: args.includes('-c:v') ? args[args.indexOf('-c:v') + 1] : undefined,
@@ -15,7 +23,7 @@ export async function runWasmExportCommand(ffmpeg: Pick<FFmpeg, 'on' | 'off' | '
   if (onTime) ffmpeg.on('progress', listener);
   try {
     const code = await ffmpeg.exec(args);
-    if (code !== 0) throw new Error(`Video export failed (FFmpeg exit code ${code}).`);
+    if (code !== 0) throw new FFmpegExitError(code);
   } catch (error) {
     recordDiagnostic('warning', 'export', 'ffmpeg.command_failed', details, error);
     throw error;

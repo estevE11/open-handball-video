@@ -1,7 +1,7 @@
 import { runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProgress';
 import { monotonicProgress } from '../../electron/exportProgress';
 import { getSegmentTitles } from '../../electron/segmentTitles';
-import { fetchFile } from '@ffmpeg/util';
+import { loadBrowserExportSource } from '@/lib/browserExportSource';
 import { withBrowserExport } from '@/lib/browserExportSession';
 import { checkExportCancelled } from '../../electron/exportCancellation';
 import { splitSegmentsAcrossClips } from '@/lib/clipTimeline';
@@ -30,6 +30,7 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
   const fontName = 'sequence-font.ttf';
   const probeName = 'sequence-probe.json';
   let result: Blob;
+  const sources = new Map<string, Awaited<ReturnType<typeof loadBrowserExportSource>>>();
   try {
     const font = await fetch(new URL('fonts/Roboto-Bold.ttf', window.location.href), { signal: opts.signal });
     if (!font.ok) throw new Error('Could not load the font for export labels.');
@@ -37,12 +38,14 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
     const data = await renderClipExport({
       fontName,
       loadSource: async (index) => {
-        const name = `sequence-input-${index}`;
-        try { await ffmpeg.writeFile(name, await fetchFile(inputs[index])); }
-        catch (error) { await ffmpeg.deleteFile(name).catch(() => {}); throw error; }
-        return name;
+        const source = await loadBrowserExportSource(ffmpeg, inputs[index], `sequence-input-${index}`);
+        sources.set(source.path, source);
+        return source.path;
       },
-      releaseSource: async (name) => { await ffmpeg.deleteFile(name); },
+      releaseSource: async (name) => {
+        await sources.get(name)?.release();
+        sources.delete(name);
+      },
       probe: async (name) => {
         await ffmpeg.deleteFile(probeName).catch(() => {});
         // This core's ffprobe can return -1 on success; validate its fresh JSON output.
@@ -61,6 +64,7 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
     }, pieces, !!opts.addGap, report);
     result = new Blob([new Uint8Array(data)], { type: 'video/mp4' });
   } finally {
+    await Promise.all([...sources.values()].map(source => source.release().catch(() => {})));
     await Promise.all([fontName, probeName].map((name) => ffmpeg.deleteFile(name).catch(() => {})));
   }
   report('Export ready', 1);

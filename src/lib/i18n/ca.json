@@ -215,6 +215,7 @@
   "Restore all original clips before exporting.": "Restaura tots els clips originals abans d’exportar.",
   "No segments to export.": "No hi ha segments per exportar.",
   "Could not load the font for export labels.": "No s’ha pogut carregar el tipus de lletra de les etiquetes d’exportació.",
+  "Could not open the video for export.": "No s’ha pogut obrir el vídeo per exportar.",
   "This clip has no readable video stream.": "Aquest clip no té cap pista de vídeo llegible.",
   "This file has no readable video stream.": "Aquest fitxer no té cap pista de vídeo llegible.",
   "This source has no readable video stream.": "Aquesta font no té cap pista de vídeo llegible.",

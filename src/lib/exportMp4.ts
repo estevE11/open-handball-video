@@ -1,7 +1,7 @@
-import { runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProgress';
+import { FFmpegExitError, runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProgress';
 import { monotonicProgress } from '../../electron/exportProgress';
 import { getSegmentTitles } from '../../electron/segmentTitles';
-import { fetchFile } from '@ffmpeg/util';
+import { loadBrowserExportSource } from '@/lib/browserExportSource';
 
 import type { MainLabel, Segment } from '@/types/project';
 import { withBrowserExport } from '@/lib/browserExportSession';
@@ -94,6 +94,7 @@ export async function exportFilteredSegmentsToMp4(
   let commandProgress: ((seconds: number) => void) | undefined;
   const runFFmpeg = (args: string[]) => runWasmExportCommand(ffmpeg, args, commandProgress);
   let result: Blob;
+  let source: Awaited<ReturnType<typeof loadBrowserExportSource>> | undefined;
 
   try {
     // Load font file for overlays
@@ -114,26 +115,14 @@ export async function exportFilteredSegmentsToMp4(
       recordDiagnostic('warning', 'export', 'font.load_failed', undefined, err);
     }
 
-    const inputName = `input_${Date.now()}.mp4`;
-    temporaryFiles.add(inputName);
-    await safeDelete(ffmpeg, inputName);
     onProgress('Loading source video', 0.03);
-    console.info('[export] writing input to ffmpeg FS', { inputName });
     try {
-      let videoData: Uint8Array;
-      if (typeof videoInput === 'string' && videoInput.startsWith('file://') && window.electron) {
-        // Keep the file URL intact until the native filesystem boundary.
-        const filePath = videoInput;
-        console.info('[export] reading local file via electron', filePath);
-        videoData = await window.electron.readFile(filePath);
-      } else {
-        videoData = await fetchFile(videoInput);
-      }
-      await ffmpeg.writeFile(inputName, videoData);
+      source = await loadBrowserExportSource(ffmpeg, videoInput, `input_${Date.now()}.mp4`);
     } catch (err) {
       console.error('[export] failed to fetch video input', err);
       throw new Error(`Could not load video file for export. If you are using Electron, ensure the file still exists at the original path. (Error: ${err})`);
     }
+    const inputName = source.path;
     onProgress('Preparing clips', 0.1);
     console.info('[export] wrote input', { inputName });
 
@@ -250,6 +239,7 @@ export async function exportFilteredSegmentsToMp4(
         ]);
       } catch (err) {
         checkExportCancelled(opts.signal);
+        if (!(err instanceof FFmpegExitError)) throw err;
         console.warn('[export] re-encode failed, falling back to -c copy (no overlay)', { clipName, err });
         await runFFmpeg(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
       }
@@ -261,6 +251,9 @@ export async function exportFilteredSegmentsToMp4(
       }
     }
 
+    // Encoding no longer needs the original; release it before concatenation.
+    await source.release();
+    source = undefined;
     const concatList = clipNames.map((n) => `file '${n}'`).join('\n');
     const concatName = `concat_${Date.now()}.txt`;
     temporaryFiles.add(concatName);
@@ -279,8 +272,9 @@ export async function exportFilteredSegmentsToMp4(
     try {
       // Try stream copy first (fastest)
       await runFFmpeg(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', concatName, '-c', 'copy', outName]);
-    } catch {
+    } catch (err) {
       checkExportCancelled(opts.signal);
+      if (!(err instanceof FFmpegExitError)) throw err;
       // If stream copy concat fails (codec mismatch), re-encode the concat.
       console.warn('[export] concat -c copy failed, re-encoding concat');
       await runFFmpeg([
@@ -319,6 +313,7 @@ export async function exportFilteredSegmentsToMp4(
     console.info('[export] done', { bytes: blob.size });
     result = blob;
   } finally {
+    await source?.release().catch(() => {});
     await Promise.all([...temporaryFiles].map((path) => safeDelete(ffmpeg, path)));
     console.groupEnd();
   }

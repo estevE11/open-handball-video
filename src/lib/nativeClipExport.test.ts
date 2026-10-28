@@ -10,8 +10,9 @@ import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { fileMeta } from '@/lib/clipTimeline';
 
-const adapter = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn(), readFile: vi.fn(), exec: vi.fn(), ffprobe: vi.fn() }));
-vi.mock('@/lib/ffmpegSingleton', () => ({ getFFmpeg: async () => adapter }));
+const adapter = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn(), readFile: vi.fn(), exec: vi.fn(), ffprobe: vi.fn(),
+  createDir: vi.fn(), deleteDir: vi.fn(), mount: vi.fn(), unmount: vi.fn() }));
+vi.mock('@/lib/ffmpegSingleton', () => ({ getFFmpeg: async () => adapter, resetFFmpeg: vi.fn() }));
 import { nativeClipExport } from '../../electron/nativeClipExport';
 
 const require = createRequire(import.meta.url);
@@ -35,7 +36,9 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
     else {
       vi.stubGlobal('self', { location: { href: 'http://localhost/ffmpeg-core.js' } });
       type Core = {
-        FS: { writeFile: (name: string, data: Uint8Array) => void; readFile: (name: string) => Uint8Array; unlink: (name: string) => void; readdir: (name: string) => string[] };
+        FS: { writeFile: (name: string, data: Uint8Array) => void; readFile: (name: string) => Uint8Array; unlink: (name: string) => void; readdir: (name: string) => string[];
+          mkdir: (name: string) => void; rmdir: (name: string) => void; filesystems: Record<string, unknown>;
+          mount: (type: unknown, options: unknown, directory: string) => void; unmount: (directory: string) => void };
         setProgress: (callback: (event: { time: number; progress: number }) => void) => void;
         setLogger: (callback: (entry: { message: string }) => void) => void;
         exec: (...args: string[]) => void; ffprobe: (...args: string[]) => void; ret: number; reset: () => void;
@@ -49,6 +52,23 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
       adapter.writeFile.mockImplementation(async (name: string, data: Uint8Array) => core.FS.writeFile(name, data));
       adapter.readFile.mockImplementation(async (name: string) => core.FS.readFile(name));
       adapter.deleteFile.mockImplementation(async (name: string) => core.FS.unlink(name));
+      adapter.createDir.mockImplementation(async (name: string) => { core.FS.mkdir(name); return true; });
+      adapter.deleteDir.mockImplementation(async (name: string) => { core.FS.rmdir(name); return true; });
+      adapter.unmount.mockImplementation(async (name: string) => { core.FS.unmount(name); return true; });
+      // Node has no FileReaderSync. Supply synchronous slices to exercise the
+      // real WORKERFS and WASM decoder; browsers provide this reader natively.
+      vi.stubGlobal('FileReaderSync', class { readAsArrayBuffer(data: { bytes: ArrayBuffer }) { return data.bytes; } });
+      adapter.mount.mockImplementation(async (type: string, options: { blobs: { name: string; data: Blob }[] }, directory: string) => {
+        const blobs = await Promise.all(options.blobs.map(async ({ name, data }) => {
+          const bytes = await data.arrayBuffer();
+          return { name, data: { size: bytes.byteLength, slice: (start: number, end: number) => {
+            const chunk = bytes.slice(start, end);
+            return { size: chunk.byteLength, bytes: chunk };
+          } } };
+        }));
+        core.FS.mount(core.FS.filesystems[type], { blobs }, directory);
+        return true;
+      });
       adapter.exec.mockImplementation(async (args: string[]) => { core.exec('-stats_period', '0.01', ...args); const code = core.ret; core.reset(); return code; });
       adapter.ffprobe.mockImplementation(async (args: string[]) => { core.ffprobe(...args); const code = core.ret; core.reset(); return code; });
       vi.stubGlobal('window', { location: { href: 'http://localhost/' } });
@@ -101,7 +121,7 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
         }
       }
       expect(progressListeners.size).toBe(0);
-      expect(core.FS.readdir('/').filter((name) => /^(sequence-|part_|gap|concat|export|audio-probe|silent-export)/.test(name))).toEqual([]);
+      expect(core.FS.readdir('/').filter((name) => /^(source-|sequence-|part_|gap|concat|export|audio-probe|silent-export)/.test(name))).toEqual([]);
     }
     expect(progress.some((ratio) => ratio > 0.1 && ratio < 0.85)).toBe(true);
     expect(progress).toEqual([...progress].sort((a, b) => a - b));

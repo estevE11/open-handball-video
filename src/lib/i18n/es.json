@@ -215,6 +215,7 @@
   "Restore all original clips before exporting.": "Restaura todos los clips originales antes de exportar.",
   "No segments to export.": "No hay segmentos para exportar.",
   "Could not load the font for export labels.": "No se ha podido cargar la fuente de las etiquetas de exportación.",
+  "Could not open the video for export.": "No se ha podido abrir el vídeo para exportar.",
   "This clip has no readable video stream.": "Este clip no tiene una pista de vídeo legible.",
   "This file has no readable video stream.": "Este archivo no tiene una pista de vídeo legible.",
   "This source has no readable video stream.": "Esta fuente no tiene una pista de vídeo legible.",
