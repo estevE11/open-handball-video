@@ -44,5 +44,5 @@ it('offers a JSON download when clipboard access is denied', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Download report' }));
   expect(click).toHaveBeenCalledOnce();
   await waitFor(() => expect(downloaded).toBeTruthy());
-  expect(JSON.parse(await downloaded!.text())).toMatchObject({ reportVersion: 1, storage: { persistent: 'unsupported' } });
+  expect(JSON.parse(await downloaded!.text())).toMatchObject({ reportVersion: 2, storage: { persistent: 'unsupported' } });
 });

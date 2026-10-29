@@ -9,6 +9,8 @@ import { expect, it, vi } from 'vitest';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { fileMeta } from '@/lib/clipTimeline';
+import { instrumentFFmpegCore } from './ffmpegCoreTelemetry.js';
+import { diagnosticWorker, recordWorkerTelemetry } from './diagnostics';
 
 const adapter = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn(), readFile: vi.fn(), exec: vi.fn(), ffprobe: vi.fn(),
   createDir: vi.fn(), deleteDir: vi.fn(), mount: vi.fn(), unmount: vi.fn() }));
@@ -40,11 +42,14 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
           mkdir: (name: string) => void; rmdir: (name: string) => void; filesystems: Record<string, unknown>;
           mount: (type: unknown, options: unknown, directory: string) => void; unmount: (directory: string) => void };
         setProgress: (callback: (event: { time: number; progress: number }) => void) => void;
-        setLogger: (callback: (entry: { message: string }) => void) => void;
+        setLogger: (callback: (entry: { type: string; message: string }) => void) => void;
         exec: (...args: string[]) => void; ffprobe: (...args: string[]) => void; ret: number; reset: () => void;
       };
       const core: Core = await require('@ffmpeg/core')({ wasmBinary: await fs.readFile(require.resolve('@ffmpeg/core/wasm')) });
-      core.setLogger(() => {});
+      instrumentFFmpegCore(core, 2_147_483_648);
+      core.setLogger((entry) => {
+        if (entry.type === 'ohv-telemetry') recordWorkerTelemetry(adapter, entry.message);
+      });
       const progressListeners = new Set<(event: { time: number; progress: number }) => void>();
       adapter.on.mockImplementation((_event, callback) => progressListeners.add(callback));
       adapter.off.mockImplementation((_event, callback) => progressListeners.delete(callback));
@@ -121,6 +126,8 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
         }
       }
       expect(progressListeners.size).toBe(0);
+      expect(diagnosticWorker(adapter)?.latest.wasmMemory.capacityBytes).toBeGreaterThan(0);
+      expect(diagnosticWorker(adapter)?.latest.wasmMemory.usedBytes).toBeNull();
       expect(core.FS.readdir('/').filter((name) => /^(source-|sequence-|part_|gap|concat|export|audio-probe|silent-export)/.test(name))).toEqual([]);
     }
     expect(progress.some((ratio) => ratio > 0.1 && ratio < 0.85)).toBe(true);

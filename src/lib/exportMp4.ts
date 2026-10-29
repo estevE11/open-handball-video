@@ -7,6 +7,7 @@ import type { MainLabel, Segment } from '@/types/project';
 import { withBrowserExport } from '@/lib/browserExportSession';
 import { checkExportCancelled } from '../../electron/exportCancellation';
 import { recordDiagnostic } from '@/lib/diagnostics';
+import { probeExportMedia } from '@/lib/exportMediaProbe';
 
 function toFixedSec(v: number): string {
   return (Math.max(0, v) || 0).toFixed(3);
@@ -92,7 +93,11 @@ export async function exportFilteredSegmentsToMp4(
 
   const temporaryFiles = new Set<string>();
   let commandProgress: ((seconds: number) => void) | undefined;
-  const runFFmpeg = (args: string[]) => runWasmExportCommand(ffmpeg, args, commandProgress);
+  let commandContext: Record<string, unknown> = {};
+  const runFFmpeg = (args: string[]) => {
+    checkExportCancelled(opts.signal);
+    return runWasmExportCommand(ffmpeg, args, commandProgress, commandContext);
+  };
   let result: Blob;
   let source: Awaited<ReturnType<typeof loadBrowserExportSource>> | undefined;
 
@@ -141,25 +146,29 @@ export async function exportFilteredSegmentsToMp4(
     if (valid.length !== segments.length) recordDiagnostic('warning', 'export', 'segments.skipped', { requestedCount: segments.length, validCount: valid.length, minimumDurationSec: 0.02 });
     console.info('[export] segments (valid)', valid.length);
 
+    const probeName = `source-probe_${Date.now()}.json`;
+    temporaryFiles.add(probeName);
+    let media: Awaited<ReturnType<typeof probeExportMedia>> | undefined;
+    try {
+      checkExportCancelled(opts.signal);
+      media = await probeExportMedia(ffmpeg, inputName, probeName, 0);
+    }
+    catch (error) {
+      // The gap requires stream information. Otherwise diagnostic probing is
+      // best effort, preserving exports that worked without it previously.
+      if (addGap) throw error;
+    }
+
     // If addGap is enabled, we create a 0.5s black clip matching the first clip's settings
     const gapName = 'gap.mp4';
     if (addGap) {
       temporaryFiles.add(gapName);
       onProgress('Rendering gaps', 0.1);
+      commandContext = { stage: 'gap', sourceIndex: 0, durationSec: 0.5 };
       commandProgress = (seconds) => onProgress('Rendering gaps', 0.1 + Math.min(1, seconds / 0.5) * 0.05);
       console.info('[export] creating 0.5s black gap clip');
       await safeDelete(ffmpeg, gapName);
-      const probeName = `audio-probe_${Date.now()}.json`;
-      temporaryFiles.add(probeName);
-      await safeDelete(ffmpeg, probeName);
-      // Validate fresh output: this WASM core's ffprobe can report -1 on success.
-      recordDiagnostic('info', 'export', 'gap.audio_probe_started');
-      await ffmpeg.ffprobe(['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', inputName, '-o', probeName]);
-      const probe = JSON.parse(new TextDecoder().decode(await ffmpeg.readFile(probeName) as Uint8Array)) as {
-        streams: { codec_type: string }[];
-      };
-      const hasAudio = probe.streams.some((stream) => stream.codec_type === 'audio');
-      recordDiagnostic('info', 'export', 'gap.audio_probe_completed', { hasAudio, streamCount: probe.streams.length });
+      const hasAudio = media!.streams.some((stream) => stream.codec_type === 'audio');
       // Preserve video-only sources; only mute an audio stream when one exists.
       await runFFmpeg([
         '-hide_banner',
@@ -201,6 +210,10 @@ export async function exportFilteredSegmentsToMp4(
       }
 
       const phase = `Rendering clip ${i + 1} of ${valid.length}`;
+      commandContext = { stage: 'clip', sourceIndex: 0, renderIndex: i + 1, renderCount: valid.length,
+        selectionIndex: segments.findIndex(segment => segment.id === seg.id) + 1,
+        startTimeSec: Number(start), endTimeSec: seg.endTimeSec, durationSec: Number(dur),
+        secondaryOverlay: !!secondaryText };
       commandProgress = (seconds) => onProgress(phase, 0.15 + (renderedDuration + Math.min(Number(dur), seconds)) / totalDuration * 0.7);
       commandProgress(0);
       console.info('[export] cutting clip', {
@@ -240,6 +253,7 @@ export async function exportFilteredSegmentsToMp4(
       } catch (err) {
         checkExportCancelled(opts.signal);
         if (!(err instanceof FFmpegExitError)) throw err;
+        commandContext = { ...commandContext, stage: 'clip-copy-fallback' };
         console.warn('[export] re-encode failed, falling back to -c copy (no overlay)', { clipName, err });
         await runFFmpeg(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
       }
@@ -266,6 +280,7 @@ export async function exportFilteredSegmentsToMp4(
     await safeDelete(ffmpeg, outName);
 
     const outputDuration = totalDuration + (addGap ? (valid.length - 1) * 0.5 : 0);
+    commandContext = { stage: 'concat', renderedClips: valid.length, inputCount: clipNames.length, expectedDurationSec: outputDuration };
     commandProgress = (seconds) => onProgress('Merging tagged clips', 0.85 + Math.min(1, seconds / outputDuration) * 0.13);
     commandProgress(0);
     console.info('[export] concat start', { outName });
@@ -275,6 +290,7 @@ export async function exportFilteredSegmentsToMp4(
     } catch (err) {
       checkExportCancelled(opts.signal);
       if (!(err instanceof FFmpegExitError)) throw err;
+      commandContext = { ...commandContext, stage: 'concat-encode-fallback' };
       // If stream copy concat fails (codec mismatch), re-encode the concat.
       console.warn('[export] concat -c copy failed, re-encoding concat');
       await runFFmpeg([

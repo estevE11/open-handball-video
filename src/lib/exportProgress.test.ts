@@ -1,6 +1,9 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { monotonicProgress, nativeProgressParser } from '../../electron/exportProgress';
 import { runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProgress';
+import { clearDiagnostics, diagnosticEngine, diagnosticHistory, recordDiagnostic, recordEngineLog } from './diagnostics';
+
+afterEach(() => { clearDiagnostics(); vi.restoreAllMocks(); });
 
 it('keeps progress finite, bounded and monotonic during retries', () => {
   const values: number[] = [];
@@ -26,6 +29,33 @@ it.each([0, 1])('removes WASM progress listeners after exit code %s', async (cod
   const job = runWasmExportCommand(io, [], onTime);
   if (code) await expect(job).rejects.toThrow('exit code 1'); else await job;
   expect(onTime.mock.calls).toEqual([[2.5]]);
+  expect(io.off).toHaveBeenCalledWith('progress', listener);
+});
+
+it('retains precise failing command, progress and timing while omitting overlay text and paths', async () => {
+  let listener: ((event: { time: number; progress: number }) => void) | undefined;
+  let now = 1000;
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const crash = 'RuntimeError: index out of bounds';
+  const io = { on: vi.fn((_event, callback) => { listener = callback; }), off: vi.fn(), exec: vi.fn(async () => {
+    now += 432;
+    listener?.({ time: 1_250_000, progress: 0.2 });
+    recordEngineLog('[h264] reference picture missing', diagnosticEngine(io).engineId);
+    throw crash;
+  }) };
+  await expect(runWasmExportCommand(io, ['-ss', '3200', '-t', '9', '-i', '/Users/alice/private.mov',
+    '-vf', "drawtext=text='Private tactics'", '-c:v', 'libx264', '-preset', 'veryfast', 'output.mp4'], undefined,
+  { stage: 'clip', selectionIndex: 47, sourceIndex: 0, startTimeSec: 3200, endTimeSec: 3209 })).rejects.toBe(crash);
+  const failure = diagnosticHistory().events.find(event => event.code === 'ffmpeg.command_failed')!;
+  expect(failure.details).toMatchObject({ selectionIndex: 47, sourceIndex: 0, startTimeSec: 3200, endTimeSec: 3209,
+    settings: { '-ss': 3200, '-t': 9, '-c:v': 'libx264', '-preset': 'veryfast' }, elapsedMs: 432,
+    progressEvents: 1, lastProgress: { seconds: 1.25, ratio: 0.2 }, status: 'failed' });
+  expect(diagnosticHistory().engineLogs.at(-1)).toMatchObject({ commandId: expect.any(String), engineId: expect.any(String) });
+  recordDiagnostic('error', 'export', 'export.failed', undefined, crash);
+  expect(diagnosticHistory().events.at(-1)?.context).toMatchObject({ exportCommand: { selectionIndex: 47, status: 'failed' } });
+  const json = JSON.stringify(diagnosticHistory());
+  expect(json).not.toContain('Private tactics');
+  expect(json).not.toContain('alice');
   expect(io.off).toHaveBeenCalledWith('progress', listener);
 });
 

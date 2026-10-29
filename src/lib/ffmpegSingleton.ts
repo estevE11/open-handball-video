@@ -1,8 +1,9 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { recordDiagnostic, recordEngineLog } from '@/lib/diagnostics';
+import { diagnosticEngine, diagnosticResources, recordDiagnostic, recordEngineLog, recordWorkerTelemetry } from '@/lib/diagnostics';
 import workerURL from '@ffmpeg/ffmpeg/worker?worker&url';
 import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
+import telemetryCoreURL from './ffmpegCoreTelemetry.js?url&no-inline';
 
 let ffmpegSingleton: FFmpeg | null = null;
 let loadingInstance: FFmpeg | null = null;
@@ -27,10 +28,13 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
 
   console.info('[ffmpeg] getFFmpeg() creating instance');
   const ffmpeg = new FFmpeg();
+  const engine = diagnosticEngine(ffmpeg);
   loadingInstance = ffmpeg;
   const currentGeneration = generation;
   ffmpeg.on('log', ({ type, message }) => {
-    recordEngineLog(`[${type}] ${message}`);
+    if (generation !== currentGeneration) return;
+    if (type === 'ohv-telemetry') { recordWorkerTelemetry(ffmpeg, message); return; }
+    recordEngineLog(`[${type}] ${message}`, engine.engineId);
     // Forward ffmpeg internal logs to the console for debugging.
     const fn = type === 'fferr' ? console.warn : console.debug;
     fn(`[ffmpeg:${type}] ${message}`);
@@ -78,7 +82,12 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
         console.warn('[ffmpeg] load() still pending after 10s', { classWorkerURL, coreURL, wasmURL });
       }, 10_000);
       try {
-        await ffmpeg.load({ classWorkerURL, coreURL, wasmURL });
+        const diagnosticCore = new URL(telemetryCoreURL, window.location.href);
+        diagnosticCore.searchParams.set('core', new URL(coreURL, window.location.href).href);
+        if (typeof __APP_BUILD__ !== 'undefined' && __APP_BUILD__.exportEngine?.maxHeapBytes) {
+          diagnosticCore.searchParams.set('heapLimitBytes', String(__APP_BUILD__.exportEngine.maxHeapBytes));
+        }
+        await ffmpeg.load({ classWorkerURL, coreURL: diagnosticCore.href, wasmURL });
       } finally {
         window.clearTimeout(warnTimer);
       }
@@ -97,7 +106,7 @@ export async function getFFmpeg(onProgress?: (p: FfmpegProgress) => void): Promi
     if (generation !== currentGeneration) throw new DOMException('Export cancelled', 'AbortError');
     loadingInstance = null;
     ffmpegSingleton = ffmpeg;
-    recordDiagnostic('info', 'export', 'engine.loaded', { elapsedMs: Math.round(performance.now() - t0) });
+    recordDiagnostic('info', 'export', 'engine.loaded', { ...diagnosticEngine(ffmpeg), elapsedMs: Math.round(performance.now() - t0), resources: diagnosticResources() });
     return ffmpeg;
   })();
 

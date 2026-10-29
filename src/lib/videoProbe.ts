@@ -1,6 +1,7 @@
 import { fetchFile } from '@ffmpeg/util';
 
 import { getFFmpeg } from '@/lib/ffmpegSingleton';
+import { diagnosticEngine, diagnosticResources, recordDiagnostic } from './diagnostics';
 
 function parseRational(r: string | undefined): number | null {
   if (!r) return null;
@@ -21,6 +22,10 @@ function roundFps(v: number): number {
 
 export async function probeVideoFps(file: File | string): Promise<number | null> {
   const ffmpeg = await getFFmpeg();
+  const startedAt = Date.now();
+  const engine = diagnosticEngine(ffmpeg, 'probe');
+  recordDiagnostic('info', 'media', 'fps_probe.started', { ...engine, inputMode: 'memory-copy',
+    bytes: typeof file === 'string' ? undefined : file.size, resources: diagnosticResources() });
 
   const inputName = `probe_${Date.now()}.mp4`;
   const outName = `probe_${Date.now()}.json`;
@@ -57,10 +62,14 @@ export async function probeVideoFps(file: File | string): Promise<number | null>
     const r = parseRational(stream?.r_frame_rate);
     const fps = (avg && avg > 0 ? avg : r) ?? null;
 
+    recordDiagnostic('info', 'media', 'fps_probe.completed', { ...engine, fps, elapsedMs: Date.now() - startedAt });
     if (!fps) return null;
     // Sanity range: typical sports footage.
     if (fps < 1 || fps > 240) return null;
     return roundFps(fps);
+  } catch (error) {
+    recordDiagnostic('warning', 'media', 'fps_probe.failed', { ...engine, elapsedMs: Date.now() - startedAt }, error);
+    throw error;
   } finally {
     await Promise.all([inputName, outName].map((path) => ffmpeg.deleteFile(path).catch(() => {})));
   }

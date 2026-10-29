@@ -344,6 +344,7 @@
   "Beta diagnostic report": "Informe de diagnóstico de la beta",
   "Download or copy this report and share it with the development team. Include what you were doing when the problem occurred.": "Descarga o copia este informe y compártelo con el equipo de desarrollo. Explica qué estabas haciendo cuando ocurrió el problema.",
   "Reports contain technical details, recent actions, and error messages. Videos and full project data are not included. Nothing is sent automatically.": "Los informes contienen detalles técnicos, acciones recientes y mensajes de error. No incluyen vídeos ni los datos completos de los proyectos. No se envía nada automáticamente.",
+  "Reports include technical details, clip timings, media properties, and error traces. Videos, label text, and full project data are not included. Nothing is sent automatically.": "Los informes incluyen detalles técnicos, tiempos de los clips, propiedades del vídeo y trazas de error. No incluyen vídeos, textos de etiquetas ni los datos completos del proyecto. No se envía nada automáticamente.",
   "Could not prepare the diagnostic report. Please retry.": "No se ha podido preparar el informe de diagnóstico. Vuelve a intentarlo.",
   "Report ID: {0}": "ID del informe: {0}",
   "Diagnostic history is available for this session only.": "El historial de diagnóstico solo está disponible durante esta sesión.",

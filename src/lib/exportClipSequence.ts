@@ -7,6 +7,7 @@ import { checkExportCancelled } from '../../electron/exportCancellation';
 import { splitSegmentsAcrossClips } from '@/lib/clipTimeline';
 import type { MainLabel, Segment, VideoClip } from '@/types/project';
 import { renderClipExport, type ExportPiece } from '../../electron/clipExportCore';
+import { probeExportMedia } from './exportMediaProbe';
 
 export async function exportClipSequence(clips: VideoClip[], inputs: (File | string)[], segments: Segment[],
   opts: { signal?: AbortSignal; addGap?: boolean; mainLabels: MainLabel[]; onProgress?: (phase: string, ratio: number) => void }) {
@@ -38,6 +39,7 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
     const data = await renderClipExport({
       fontName,
       loadSource: async (index) => {
+        checkExportCancelled(opts.signal);
         const source = await loadBrowserExportSource(ffmpeg, inputs[index], `sequence-input-${index}`);
         sources.set(source.path, source);
         return source.path;
@@ -47,17 +49,17 @@ export async function exportClipSequence(clips: VideoClip[], inputs: (File | str
         sources.delete(name);
       },
       probe: async (name) => {
-        await ffmpeg.deleteFile(probeName).catch(() => {});
-        // This core's ffprobe can return -1 on success; validate its fresh JSON output.
-        await ffmpeg.ffprobe(['-v', 'error', '-show_entries', 'stream=codec_type,width,height', '-of', 'json', name, '-o', probeName]);
-        const json = JSON.parse(new TextDecoder().decode(await ffmpeg.readFile(probeName) as Uint8Array)) as {
-          streams: { codec_type: string; width?: number; height?: number }[];
-        };
+        checkExportCancelled(opts.signal);
+        const sourceIndex = Number(name.match(/sequence-input-(\d+)$/)?.[1] ?? 0);
+        const json = await probeExportMedia(ffmpeg, name, probeName, sourceIndex);
         const video = json.streams.find((stream) => stream.codec_type === 'video');
         if (!video?.width || !video.height) throw new Error('This clip has no readable video stream.');
-        return { width: video.width, height: video.height, hasAudio: json.streams.some((stream) => stream.codec_type === 'audio') };
+        return { width: Number(video.width), height: Number(video.height), hasAudio: json.streams.some((stream) => stream.codec_type === 'audio') };
       },
-      exec: (args, onTime) => runWasmExportCommand(ffmpeg, args, onTime),
+      exec: (args, onTime, context) => {
+        checkExportCancelled(opts.signal);
+        return runWasmExportCommand(ffmpeg, args, onTime, context);
+      },
       write: async (name, data) => { await ffmpeg.writeFile(name, data); },
       read: async (name) => await ffmpeg.readFile(name) as Uint8Array,
       remove: async (name) => { await ffmpeg.deleteFile(name); },

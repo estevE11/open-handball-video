@@ -12,6 +12,11 @@ function buildBranch() {
 }
 
 const isDevBranch = buildBranch() === 'dev'
+const dependencyVersion = (name: string) => JSON.parse(readFileSync(new URL(`./node_modules/${name}/package.json`, import.meta.url), 'utf8')).version as string
+// Read the installed core's configured heap ceiling; report unknown if a future
+// build changes its implementation, rather than assuming every core is 2 GiB.
+const coreSource = readFileSync(new URL('./node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js', import.meta.url), 'utf8')
+const coreHeapLimit = coreSource.match(/function getHeapMax\(\)\{return (\d+)\}/)?.[1]
 let buildCommit = process.env.VERCEL_GIT_COMMIT_SHA ?? ''
 let buildDirty = false
 try { buildDirty = !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { /* Deployment builds may not include .git. */ }
@@ -23,7 +28,9 @@ if (!buildCommit) {
 export default defineConfig({
   base: './',
   define: { __APP_BUILD__: JSON.stringify({ version: JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version,
-    commit: buildCommit, branch: buildBranch(), builtAt: new Date().toISOString(), dirty: buildDirty }) },
+    commit: buildCommit, branch: buildBranch(), builtAt: new Date().toISOString(), dirty: buildDirty,
+    exportEngine: { core: dependencyVersion('@ffmpeg/core'), wrapper: dependencyVersion('@ffmpeg/ffmpeg'), mode: 'single-thread',
+      maxHeapBytes: coreHeapLimit ? Number(coreHeapLimit) : undefined } }) },
   build: { sourcemap: 'hidden' },
   plugins: [react(), {
     name: 'dev-branch-indicator',

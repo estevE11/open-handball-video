@@ -1,10 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
+import { clearDiagnostics, createDiagnosticReport, diagnosticEngine, exportDiagnosticPlan, recordDiagnostic, setDiagnosticContext } from './diagnostics';
+import { createEmptyProject } from './projectDefaults';
 
 const ffmpeg = vi.hoisted(() => ({
   on: vi.fn(), off: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn().mockResolvedValue(true), exec: vi.fn().mockResolvedValue(0),
   createDir: vi.fn(), deleteDir: vi.fn().mockResolvedValue(true), mount: vi.fn().mockResolvedValue(true), unmount: vi.fn(),
-  readFile: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+  ffprobe: vi.fn().mockResolvedValue(-1),
+  readFile: vi.fn(async (name: string) => name.startsWith('source-probe_')
+    ? new TextEncoder().encode(JSON.stringify({ streams: [{ codec_type: 'video', codec_name: 'h264', width: 1440, height: 900, r_frame_rate: '60/1' }] }))
+    : new Uint8Array([1, 2, 3])),
 }));
 const resetFFmpeg = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/ffmpegSingleton', () => ({ getFFmpeg: async () => ffmpeg, resetFFmpeg }));
@@ -12,7 +17,7 @@ vi.mock('@ffmpeg/util', () => ({ fetchFile: async () => new Uint8Array([1]) }));
 vi.stubGlobal('window', { location: { href: 'https://example.test/' } });
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(1) }));
 const segments = [{ id: 's', startTimeSec: 0, endTimeSec: 1, mainLabelId: 'label', secondaryLabelIds: [], createdAtMs: 0 }];
-afterEach(() => { vi.clearAllMocks(); ffmpeg.exec.mockReset().mockResolvedValue(0); });
+afterEach(() => { clearDiagnostics(); vi.clearAllMocks(); ffmpeg.exec.mockReset().mockResolvedValue(0); });
 
 it('frees temporary input, clips and completed output after export', async () => {
   const blob = await exportFilteredSegmentsToMp4(new File(['video'], 'video.mp4'), segments);
@@ -56,6 +61,38 @@ it('does not retry concatenation after a runtime crash', async () => {
   await expect(exportFilteredSegmentsToMp4(new File(['video'], 'video.mp4'), segments)).rejects.toBe(crash);
   expect(ffmpeg.exec).toHaveBeenCalledTimes(2);
   expect(resetFFmpeg).toHaveBeenCalledExactlyOnceWith(ffmpeg);
+});
+
+it('does not start an encoding command after cancellation during a source probe', async () => {
+  const controller = new AbortController();
+  ffmpeg.ffprobe.mockImplementationOnce(async () => { controller.abort(); throw new DOMException('Cancelled', 'AbortError'); });
+  await expect(exportFilteredSegmentsToMp4(new File(['video'], 'match.mp4'), segments, 'export.mp4', { signal: controller.signal }))
+    .rejects.toMatchObject({ name: 'AbortError' });
+  await Promise.resolve(); await Promise.resolve();
+  expect(ffmpeg.exec).not.toHaveBeenCalled();
+});
+
+it('produces a useful report for a failure at clip 47 of a 55-clip export', async () => {
+  clearDiagnostics();
+  const project = createEmptyProject();
+  project.segments = Array.from({ length: 55 }, (_, index) => ({ ...segments[0], id: String(index),
+    startTimeSec: index * 20, endTimeSec: index * 20 + 9, mainLabelId: project.mainLabels[0].id }));
+  setDiagnosticContext('export', { operationId: 'long-export' });
+  setDiagnosticContext('exportPlan', exportDiagnosticPlan(project, project.segments));
+  const before = diagnosticEngine(ffmpeg);
+  ffmpeg.exec.mockImplementation(async (args: string[]) => {
+    if (args.at(-1) === 'clip_46.mp4') throw 'RuntimeError: index out of bounds';
+    return 0;
+  });
+  await expect(exportFilteredSegmentsToMp4(new File(['video'], 'private.mp4'), project.segments)).rejects.toBe('RuntimeError: index out of bounds');
+  const incidentId = recordDiagnostic('error', 'export', 'export.failed', undefined, 'RuntimeError: index out of bounds');
+  const report = await createDiagnosticReport(undefined, incidentId);
+  expect(report.context.exportCommand).toMatchObject({ stage: 'clip', selectionIndex: 47, startTimeSec: 920, endTimeSec: 929,
+    durationSec: 9, commands: before.commands + 47, probes: before.probes + 1, status: 'failed', commandId: expect.any(String), elapsedMs: expect.any(Number) });
+  expect(report.context.exportPlan).toMatchObject({ totalCount: 55, capturedCount: 55, truncated: false });
+  expect(report.context.exportMedia).toMatchObject({ source0: { streams: [{ codec_name: 'h264', width: 1440, height: 900, r_frame_rate: '60/1' }] } });
+  expect(report.events.find(event => event.id === incidentId)?.context).toMatchObject({ exportCommand: { selectionIndex: 47 }, exportPlan: { totalCount: 55 } });
+  expect(JSON.stringify(report)).not.toContain('private.mp4');
 });
 
 it('renders an individual title large and its unchanged tag type small', async () => {

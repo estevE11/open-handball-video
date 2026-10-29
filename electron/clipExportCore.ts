@@ -13,7 +13,7 @@ export type ClipExportBackend = {
   loadSource: (index: number) => Promise<string>;
   releaseSource: (name: string) => Promise<void>;
   probe: (name: string) => Promise<MediaInfo>;
-  exec: (args: string[], onTime?: (seconds: number) => void) => Promise<void>;
+  exec: (args: string[], onTime?: (seconds: number) => void, context?: Record<string, unknown>) => Promise<void>;
   write: (name: string, data: Uint8Array) => Promise<void>;
   read: (name: string) => Promise<Uint8Array>;
   remove: (name: string) => Promise<void>;
@@ -58,7 +58,10 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
           '-vf', filter, '-af', 'apad', ...encode, outputs[index]);
         const phase = `Rendering clip ${index + 1} of ${pieces.length}`;
         onProgress(phase, 0.1 + renderedDuration / totalDuration * 0.75);
-        await backend.exec(args, (seconds) => onProgress(phase, 0.1 + (renderedDuration + Math.min(duration, seconds)) / totalDuration * 0.75));
+        await backend.exec(args, (seconds) => onProgress(phase, 0.1 + (renderedDuration + Math.min(duration, seconds)) / totalDuration * 0.75), {
+          stage: 'clip', sourceIndex, pieceIndex: index + 1, pieceCount: pieces.length, selectionIndex: piece.segmentIndex + 1,
+          startTimeSec: piece.startTimeSec, endTimeSec: piece.endTimeSec, durationSec: duration, width, height, hasAudio: info.hasAudio,
+        });
         renderedDuration += duration;
         onProgress(phase, 0.1 + renderedDuration / totalDuration * 0.75);
       }
@@ -69,7 +72,8 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
       onProgress('Rendering gaps', 0.85);
       files.add('gap.mp4');
       await backend.exec(['-hide_banner', '-y', '-f', 'lavfi', '-i', `color=c=black:s=${dimensions!.width}x${dimensions!.height}:r=30`,
-        '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '0.5', ...encode, 'gap.mp4'], (seconds) => onProgress('Rendering gaps', 0.85 + Math.min(1, seconds / 0.5) * 0.03));
+        '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '0.5', ...encode, 'gap.mp4'], (seconds) => onProgress('Rendering gaps', 0.85 + Math.min(1, seconds / 0.5) * 0.03),
+        { stage: 'gap', durationSec: 0.5, ...dimensions });
     }
     pieces.forEach((piece, index) => {
       if (addGap && index > 0 && piece.segmentIndex !== pieces[index - 1].segmentIndex) concat.push("file 'gap.mp4'");
@@ -79,7 +83,8 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
     await backend.write('concat.txt', new TextEncoder().encode(concat.join('\n')));
     const outputDuration = totalDuration + (concat.length - pieces.length) * 0.5;
     onProgress('Merging tagged clips', 0.88);
-    await backend.exec(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-movflags', '+faststart', 'export.mp4'], (seconds) => onProgress('Merging tagged clips', 0.88 + Math.min(1, seconds / outputDuration) * 0.1));
+    await backend.exec(['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-movflags', '+faststart', 'export.mp4'], (seconds) => onProgress('Merging tagged clips', 0.88 + Math.min(1, seconds / outputDuration) * 0.1),
+      { stage: 'concat', inputCount: concat.length, renderedPieces: pieces.length, expectedDurationSec: outputDuration });
     onProgress('Preparing download', 0.99);
     const data = await backend.read('export.mp4');
     return data;

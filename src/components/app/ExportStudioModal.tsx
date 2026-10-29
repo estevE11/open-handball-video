@@ -18,7 +18,7 @@ import { exportClipSequence } from '@/lib/exportClipSequence';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { useProjectStore } from '@/store/projectStore';
 import { DiagnosticsButton, ErrorReportAction } from './DiagnosticsButton';
-import { projectDiagnosticSummary, recordDiagnostic, setDiagnosticContext } from '@/lib/diagnostics';
+import { exportDiagnosticPlan, patchDiagnosticContext, projectDiagnosticSummary, recordDiagnostic, setDiagnosticContext } from '@/lib/diagnostics';
 
 type ExportStudioModalProps = {
   open: boolean;
@@ -388,6 +388,11 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     selectedDurationSec: selectedSegments.reduce((sum, segment) => sum + Math.max(0, segment.endTimeSec - segment.startTimeSec), 0),
                     addGap, native: !!window.electron, selectedMainLabelCount: mainLabelIds.length, selectedSecondaryLabelCount: secondaryIds.length };
                   const operationId = recordDiagnostic('info', 'export', 'export.started', exportDetails);
+                  setDiagnosticContext('export', { ...exportDetails, operationId, startedAt: new Date(startedAt).toISOString(), status: 'running' });
+                  setDiagnosticContext('exportPlan', { operationId, ...exportDiagnosticPlan(useProjectStore.getState(), selectedSegments) });
+                  setDiagnosticContext('exportCommand', {});
+                  setDiagnosticContext('exportProbe', {});
+                  setDiagnosticContext('exportMedia', {});
                   try {
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (selected)', selectedSegments.length);
@@ -397,7 +402,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                         if (controller.signal.aborted) return;
                         if (p !== lastPhase) recordDiagnostic('info', 'export', 'export.phase', { operationId, phase: p, ratio: r });
                         lastPhase = p; lastRatio = Number.isFinite(r) ? r : lastRatio;
-                        setDiagnosticContext('export', { operationId, phase: lastPhase, ratio: lastRatio });
+                        patchDiagnosticContext('export', { operationId, phase: lastPhase, ratio: lastRatio, elapsedMs: Date.now() - startedAt });
                         setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0))));
                       },
                     };
@@ -408,8 +413,10 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     downloadBlob('export.mp4', blob);
                     setPhase('Export ready');
                     setRatio(1);
+                    patchDiagnosticContext('export', { status: 'completed', bytes: blob.size, elapsedMs: Date.now() - startedAt });
                     recordDiagnostic('info', 'export', 'export.completed', { operationId, bytes: blob.size, elapsedMs: Date.now() - startedAt });
                   } catch (e) {
+                    patchDiagnosticContext('export', { status: controller.signal.aborted ? 'cancelled' : 'failed', elapsedMs: Date.now() - startedAt });
                     if (controller.signal.aborted) { setPhase('Export cancelled'); setError(null); recordDiagnostic('info', 'export', 'export.cancelled', { operationId, phase: lastPhase, ratio: lastRatio }); }
                     else {
                       const incidentId = recordDiagnostic('error', 'export', 'export.failed', { ...exportDetails, operationId, phase: lastPhase, ratio: lastRatio, elapsedMs: Date.now() - startedAt }, e);

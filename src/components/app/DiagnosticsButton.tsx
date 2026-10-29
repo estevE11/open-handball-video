@@ -36,7 +36,7 @@ export function DiagnosticsButton({ compact = false, errorId, forError = false }
         <DialogTitle>{t('Beta diagnostic report')}</DialogTitle>
         <DialogDescription>{t('Download or copy this report and share it with the development team. Include what you were doing when the problem occurred.')}</DialogDescription>
       </DialogHeader>
-      <p className="text-sm text-muted-foreground">{t('Reports contain technical details, recent actions, and error messages. Videos and full project data are not included. Nothing is sent automatically.')}</p>
+      <p className="text-sm text-muted-foreground">{t('Reports include technical details, clip timings, media properties, and error traces. Videos, label text, and full project data are not included. Nothing is sent automatically.')}</p>
       {failed ? <p role="alert">{t('Could not prepare the diagnostic report. Please retry.')}</p> : report ? <>
         <p className="break-all text-xs text-muted-foreground">{t('Report ID: {0}', report.reportId)}</p>
         {report.storage.diagnosticHistory === 'memory' && <p className="text-sm">{t('Diagnostic history is available for this session only.')}</p>}
