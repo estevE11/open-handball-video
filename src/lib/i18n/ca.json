@@ -360,5 +360,12 @@
   "Reload app": "Torna a carregar l’aplicació",
   "Share this report to help us investigate the export failure.": "Comparteix aquest informe per ajudar-nos a investigar l’error d’exportació.",
   "Share report": "Comparteix l’informe",
-  "Please share a report with us so we can investigate this error.": "Comparteix un informe amb nosaltres perquè puguem investigar aquest error."
+  "Please share a report with us so we can investigate this error.": "Comparteix un informe amb nosaltres perquè puguem investigar aquest error.",
+  "Elapsed: {0}": "Temps transcorregut: {0}",
+  "Finishing export…": "Finalitzant l’exportació…",
+  "Estimating remaining time…": "Calculant el temps restant…",
+  "About {0} remaining": "Queden aproximadament {0}",
+  "Could not open completed clips for assembly.": "No s’han pogut obrir els clips processats per unir-los.",
+  "A completed export clip is missing.": "Falta un clip processat per a l’exportació.",
+  "The export engine produced an empty clip.": "El motor d’exportació ha generat un clip buit."
 }

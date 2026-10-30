@@ -360,5 +360,12 @@
   "Reload app": "Volver a cargar la aplicación",
   "Share this report to help us investigate the export failure.": "Comparte este informe para ayudarnos a investigar el error de exportación.",
   "Share report": "Compartir informe",
-  "Please share a report with us so we can investigate this error.": "Comparte un informe con nosotros para que podamos investigar este error."
+  "Please share a report with us so we can investigate this error.": "Comparte un informe con nosotros para que podamos investigar este error.",
+  "Elapsed: {0}": "Tiempo transcurrido: {0}",
+  "Finishing export…": "Finalizando exportación…",
+  "Estimating remaining time…": "Calculando el tiempo restante…",
+  "About {0} remaining": "Quedan aproximadamente {0}",
+  "Could not open completed clips for assembly.": "No se han podido abrir los clips procesados para unirlos.",
+  "A completed export clip is missing.": "Falta un clip procesado para la exportación.",
+  "The export engine produced an empty clip.": "El motor de exportación ha generado un clip vacío."
 }

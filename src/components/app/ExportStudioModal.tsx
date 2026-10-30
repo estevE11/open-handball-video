@@ -2,7 +2,7 @@ import { useLocalizedLabels } from '@/hooks/useLocalizedLabels';
 import { useTranslation, useTranslatedMessage } from '@/lib/i18n';
 import { getSegmentTitles } from '../../../electron/segmentTitles';
 import { ArrowDown, ArrowUp, GripVertical, LoaderCircle, Check, ChevronsUpDown } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { createExportTimeEstimator, formatExportDuration } from '@/lib/exportTimeEstimate';
 import { formatTimecode } from '@/lib/time';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
@@ -50,6 +51,16 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [ratio, setRatio] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string>();
+  const timeEstimator = useRef<ReturnType<typeof createExportTimeEstimator> | null>(null);
+  const [timing, setTiming] = useState<{ elapsedMs: number; remainingMs: number | null } | null>(null);
+  useEffect(() => {
+    if (!isRendering) return;
+    const timer = window.setInterval(() => {
+      if (timeEstimator.current) setTiming(timeEstimator.current.snapshot(Date.now()));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRendering]);
+  useEffect(() => () => exportController.current?.abort(), []);
 
   const timelineSegments = useMemo(() => [...segments].sort((a, b) => a.startTimeSec - b.startTimeSec), [segments]);
   const timelineNumbers = useMemo(() => new Map(timelineSegments.map((seg, index) => [seg.id, index + 1])), [timelineSegments]);
@@ -365,6 +376,13 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     <div className={`h-full rounded-full transition-[width] duration-200 ${error ? 'bg-destructive' : 'bg-primary'}`}
                       style={{ width: `${ratio * 100}%` }} />
                   </div>
+                  {timing && <div className="space-y-0.5 text-xs text-muted-foreground" data-testid="export-timing">
+                    <div>{t("Elapsed: {0}", formatExportDuration(timing.elapsedMs))}</div>
+                    {isRendering && !isCancelling && <div>{phase === 'Preparing download'
+                      ? t("Finishing export…")
+                      : timing.remainingMs === null ? t("Estimating remaining time…")
+                        : t("About {0} remaining", formatExportDuration(timing.remainingMs))}</div>}
+                  </div>}
                 </div>
               ) : null}
               {isRendering && <Button variant="outline" disabled={isCancelling} onClick={() => {
@@ -384,6 +402,8 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   let lastPhase = 'Preparing export';
                   let lastRatio = 0;
                   const startedAt = Date.now();
+                  timeEstimator.current = createExportTimeEstimator(startedAt);
+                  setTiming(timeEstimator.current.snapshot(startedAt));
                   const exportDetails = { ...projectDiagnosticSummary(useProjectStore.getState()), selectedSegments: selectedSegments.length,
                     selectedDurationSec: selectedSegments.reduce((sum, segment) => sum + Math.max(0, segment.endTimeSec - segment.startTimeSec), 0),
                     addGap, native: !!window.electron, selectedMainLabelCount: mainLabelIds.length, selectedSecondaryLabelCount: secondaryIds.length };
@@ -401,6 +421,8 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                       onProgress: (p: string, r: number) => {
                         if (controller.signal.aborted) return;
                         if (p !== lastPhase) recordDiagnostic('info', 'export', 'export.phase', { operationId, phase: p, ratio: r });
+                        timeEstimator.current?.update(p, r, Date.now());
+                        if (timeEstimator.current) setTiming(timeEstimator.current.snapshot(Date.now()));
                         lastPhase = p; lastRatio = Number.isFinite(r) ? r : lastRatio;
                         patchDiagnosticContext('export', { operationId, phase: lastPhase, ratio: lastRatio, elapsedMs: Date.now() - startedAt });
                         setPhase(r >= 1 ? 'Preparing download' : p); setRatio((previous) => Math.max(previous, Math.min(0.99, Math.max(0, Number.isFinite(r) ? r : 0))));
@@ -424,6 +446,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     }
                     console.error('[Export Studio] export failed', e);
                   } finally {
+                    if (timeEstimator.current) setTiming(timeEstimator.current.snapshot(Date.now()));
                     setIsRendering(false); setIsCancelling(false); exportController.current = null;
                     console.groupEnd();
                   }

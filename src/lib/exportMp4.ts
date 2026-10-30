@@ -1,13 +1,11 @@
-import { FFmpegExitError, runWasmExportCommand, withNativeExportProgress } from '@/lib/exportProgress';
+import { FFmpegExitError, withNativeExportProgress } from '@/lib/exportProgress';
 import { monotonicProgress } from '../../electron/exportProgress';
 import { getSegmentTitles } from '../../electron/segmentTitles';
-import { loadBrowserExportSource } from '@/lib/browserExportSource';
 
 import type { MainLabel, Segment } from '@/types/project';
-import { withBrowserExport } from '@/lib/browserExportSession';
+import { withIsolatedBrowserExport } from '@/lib/browserIsolatedExport';
 import { checkExportCancelled } from '../../electron/exportCancellation';
 import { recordDiagnostic } from '@/lib/diagnostics';
-import { probeExportMedia } from '@/lib/exportMediaProbe';
 
 function toFixedSec(v: number): string {
   return (Math.max(0, v) || 0).toFixed(3);
@@ -16,14 +14,6 @@ function toFixedSec(v: number): string {
 function escapeFfmpegText(text: string): string {
   // ffmpeg drawtext needs ':' and '\' escaped.
   return text.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "'\\\\''");
-}
-
-async function safeDelete(ffmpeg: { deleteFile: (path: string) => Promise<boolean> }, path: string) {
-  try {
-    await ffmpeg.deleteFile(path);
-  } catch {
-    // ignore
-  }
 }
 
 export type ExportMp4Options = {
@@ -61,7 +51,7 @@ export async function exportFilteredSegmentsToMp4(
       const buffer = new Uint8Array(data.length);
       buffer.set(data);
       const blob = new Blob([buffer], { type: 'video/mp4' });
-      
+
       return blob;
     } catch (err) {
       checkExportCancelled(opts.signal);
@@ -71,65 +61,14 @@ export async function exportFilteredSegmentsToMp4(
     }
   }
 
-  // BROWSER / WASM EXPORT PATH
-  // Expanded group so logs are visible without clicking.
-  console.group('[export] start');
-  if (videoInput instanceof File) {
-    console.info('[export] input video', {
-      name: videoInput.name,
-      size: videoInput.size,
-      type: videoInput.type,
-      lastModified: videoInput.lastModified,
-    });
-  } else {
-    console.info('[export] input video URL', videoInput);
-  }
-  console.info('[export] segments (raw)', segments.length);
-
-  console.info('[export] calling getFFmpeg()…');
   onProgress('Loading export engine', 0);
-  return withBrowserExport(opts.signal, async (ffmpeg) => {
-  console.info('[export] getFFmpeg() resolved (core loaded)');
-
-  const temporaryFiles = new Set<string>();
-  let commandProgress: ((seconds: number) => void) | undefined;
-  let commandContext: Record<string, unknown> = {};
-  const runFFmpeg = (args: string[]) => {
-    checkExportCancelled(opts.signal);
-    return runWasmExportCommand(ffmpeg, args, commandProgress, commandContext);
-  };
-  let result: Blob;
-  let source: Awaited<ReturnType<typeof loadBrowserExportSource>> | undefined;
-
-  try {
-    // Load font file for overlays
-    const fontName = 'font.ttf';
-    temporaryFiles.add(fontName);
-    try {
-      // Construct font URL relative to the current page to handle Electron file:// and Vite dev/prod
-      const fontUrl = new URL('fonts/Roboto-Bold.ttf', window.location.href).href;
-      console.info('[export] fetching font from', fontUrl);
-      const fontResponse = await fetch(fontUrl, { signal: opts.signal });
-      if (!fontResponse.ok) throw new Error(`HTTP error! status: ${fontResponse.status}`);
-      const fontData = await fontResponse.arrayBuffer();
-      await ffmpeg.writeFile(fontName, new Uint8Array(fontData));
-      console.info('[export] font loaded');
-    } catch (err) {
-      checkExportCancelled(opts.signal);
-      console.warn('[export] failed to load font, overlay might look poor or fail', err);
-      recordDiagnostic('warning', 'export', 'font.load_failed', undefined, err);
-    }
-
-    onProgress('Loading source video', 0.03);
-    try {
-      source = await loadBrowserExportSource(ffmpeg, videoInput, `input_${Date.now()}.mp4`);
-    } catch (err) {
-      console.error('[export] failed to fetch video input', err);
-      throw new Error(`Could not load video file for export. If you are using Electron, ensure the file still exists at the original path. (Error: ${err})`);
-    }
-    const inputName = source.path;
+  return withIsolatedBrowserExport([videoInput], opts.signal, async (backend) => {
+    let commandProgress: ((seconds: number) => void) | undefined;
+    let commandContext: Record<string, unknown> = {};
+    const runFFmpeg = (args: string[]) => backend.exec(args, commandProgress, commandContext);
+    const fontName = backend.fontName;
+    const inputName = await backend.loadSource(0);
     onProgress('Preparing clips', 0.1);
-    console.info('[export] wrote input', { inputName });
 
     const valid = segments
       .map((s) => ({
@@ -146,28 +85,23 @@ export async function exportFilteredSegmentsToMp4(
     if (valid.length !== segments.length) recordDiagnostic('warning', 'export', 'segments.skipped', { requestedCount: segments.length, validCount: valid.length, minimumDurationSec: 0.02 });
     console.info('[export] segments (valid)', valid.length);
 
-    const probeName = `source-probe_${Date.now()}.json`;
-    temporaryFiles.add(probeName);
-    let media: Awaited<ReturnType<typeof probeExportMedia>> | undefined;
-    try {
-      checkExportCancelled(opts.signal);
-      media = await probeExportMedia(ffmpeg, inputName, probeName, 0);
-    }
+    checkExportCancelled(opts.signal);
+    let media: Awaited<ReturnType<typeof backend.probeMedia>> | undefined;
+    try { media = await backend.probeMedia(inputName); }
     catch (error) {
-      // The gap requires stream information. Otherwise diagnostic probing is
-      // best effort, preserving exports that worked without it previously.
+      checkExportCancelled(opts.signal);
+      // Stream metadata is required for gaps; otherwise preserve best-effort probing.
       if (addGap) throw error;
     }
 
     // If addGap is enabled, we create a 0.5s black clip matching the first clip's settings
     const gapName = 'gap.mp4';
     if (addGap) {
-      temporaryFiles.add(gapName);
+
       onProgress('Rendering gaps', 0.1);
       commandContext = { stage: 'gap', sourceIndex: 0, durationSec: 0.5 };
       commandProgress = (seconds) => onProgress('Rendering gaps', 0.1 + Math.min(1, seconds / 0.5) * 0.05);
       console.info('[export] creating 0.5s black gap clip');
-      await safeDelete(ffmpeg, gapName);
       const hasAudio = media!.streams.some((stream) => stream.codec_type === 'audio');
       // Preserve video-only sources; only mute an audio stream when one exists.
       await runFFmpeg([
@@ -193,8 +127,7 @@ export async function exportFilteredSegmentsToMp4(
       const seg = valid[i]!;
       const clipName = `clip_${i}.mp4`;
       clipNames.push(clipName);
-      temporaryFiles.add(clipName);
-      await safeDelete(ffmpeg, clipName);
+
 
       const start = toFixedSec(seg.startTimeSec);
       const dur = toFixedSec(seg.endTimeSec - seg.startTimeSec);
@@ -225,38 +158,29 @@ export async function exportFilteredSegmentsToMp4(
         vf,
       });
 
-      // Prefer re-encode for reliability; fall back to stream copy if codec isn't available.
-      try {
-        await runFFmpeg([
-          '-hide_banner',
-          '-y',
-          '-ss',
-          start,
-          '-t',
-          dur,
-          '-i',
-          inputName,
-          '-vf',
-          vf,
-          '-c:v',
-          'libx264',
-          '-preset',
-          'veryfast',
-          '-crf',
-          '23',
-          '-c:a',
-          'aac',
-          '-b:a',
-          '128k',
-          clipName,
-        ]);
-      } catch (err) {
-        checkExportCancelled(opts.signal);
-        if (!(err instanceof FFmpegExitError)) throw err;
-        commandContext = { ...commandContext, stage: 'clip-copy-fallback' };
-        console.warn('[export] re-encode failed, falling back to -c copy (no overlay)', { clipName, err });
-        await runFFmpeg(['-hide_banner', '-y', '-ss', start, '-t', dur, '-i', inputName, '-c', 'copy', clipName]);
-      }
+      await runFFmpeg([
+        '-hide_banner',
+        '-y',
+        '-ss',
+        start,
+        '-t',
+        dur,
+        '-i',
+        inputName,
+        '-vf',
+        vf,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '23',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+        clipName,
+      ]);
 
       renderedDuration += seg.endTimeSec - seg.startTimeSec;
       onProgress(phase, 0.15 + renderedDuration / totalDuration * 0.7);
@@ -265,19 +189,14 @@ export async function exportFilteredSegmentsToMp4(
       }
     }
 
-    // Encoding no longer needs the original; release it before concatenation.
-    await source.release();
-    source = undefined;
     const concatList = clipNames.map((n) => `file '${n}'`).join('\n');
     const concatName = `concat_${Date.now()}.txt`;
-    temporaryFiles.add(concatName);
-    await safeDelete(ffmpeg, concatName);
+
     console.info('[export] writing concat list', { concatName, clips: clipNames.length });
-    await ffmpeg.writeFile(concatName, new TextEncoder().encode(concatList));
+    await backend.write(concatName, new TextEncoder().encode(concatList));
 
     const outName = outputName.endsWith('.mp4') ? outputName : `${outputName}.mp4`;
-    temporaryFiles.add(outName);
-    await safeDelete(ffmpeg, outName);
+
 
     const outputDuration = totalDuration + (addGap ? (valid.length - 1) * 0.5 : 0);
     commandContext = { stage: 'concat', renderedClips: valid.length, inputCount: clipNames.length, expectedDurationSec: outputDuration };
@@ -320,21 +239,15 @@ export async function exportFilteredSegmentsToMp4(
     onProgress('Preparing download', 0.99);
     console.info('[export] concat done', { outName });
 
-    const data = (await ffmpeg.readFile(outName)) as Uint8Array;
+    const data = (await backend.read(outName)) as Uint8Array;
     // Ensure we return a Blob backed by a normal ArrayBuffer (not SharedArrayBuffer).
     const copy = new Uint8Array(data.length);
     copy.set(data);
 
     const blob = new Blob([copy], { type: 'video/mp4' });
     console.info('[export] done', { bytes: blob.size });
-    result = blob;
-  } finally {
-    await source?.release().catch(() => {});
-    await Promise.all([...temporaryFiles].map((path) => safeDelete(ffmpeg, path)));
-    console.groupEnd();
-  }
-  onProgress('Export ready', 1);
-  checkExportCancelled(opts.signal);
-  return result;
+    onProgress('Export ready', 1);
+    checkExportCancelled(opts.signal);
+    return blob;
   });
 }

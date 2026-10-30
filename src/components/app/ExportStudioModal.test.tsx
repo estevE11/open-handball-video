@@ -199,3 +199,33 @@ it.each(['single video', 'multiple videos'])('keeps timeline numbers while reord
   expect(exported.map((seg) => seg.id)).toEqual([third.id, first.id]);
   expect(useProjectStore.getState().exportProjectJson()).toBe(savedProject);
 });
+
+it('shows an estimate from rendering progress and clears it on cancellation and a new export', async () => {
+  let now = 1000;
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
+  let progress!: (phase: string, ratio: number) => void;
+  vi.mocked(exportFilteredSegmentsToMp4).mockImplementation((_input, _segments, _output, opts) => {
+    progress = opts!.onProgress!;
+    return new Promise((_resolve, reject) => opts!.signal!.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError'))));
+  });
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  expect(screen.getByText('Estimating remaining time…')).toBeTruthy();
+  act(() => progress('Rendering clip 1 of 2', 0.15));
+  now = 11_000;
+  act(() => progress('Rendering clip 1 of 2', 0.5));
+  expect(screen.getByText('Elapsed: 0:10')).toBeTruthy();
+  expect(screen.getByText('About 0:15 remaining')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel export' }));
+  await screen.findByText('Export cancelled');
+  expect(screen.queryByText(/remaining/)).toBeNull();
+  now = 12_000;
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  expect(screen.getByText('Elapsed: 0:00')).toBeTruthy();
+  expect(screen.getByText('Estimating remaining time…')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel export' }));
+  await screen.findByText('Export cancelled');
+});
