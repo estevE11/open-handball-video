@@ -72,6 +72,8 @@
   "Add 0.5s black gap between clips": "Añadir una pausa negra de 0,5 s entre clips",
   "{0} of {1} matching clips selected for export": "{0} de {1} clips coincidentes seleccionados para exportar",
   "Reset order": "Restablecer orden",
+  "Select all": "Seleccionar todos",
+  "Deselect all": "Deseleccionar todos",
   "Timeline #": "N.º en línea de tiempo",
   "Order": "Orden",
   "Clip / type": "Clip / tipo",

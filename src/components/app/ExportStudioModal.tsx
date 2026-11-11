@@ -93,6 +93,14 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
     const excluded = new Set(excludedSegmentIds);
     return filtered.filter((seg) => !excluded.has(seg.id));
   }, [filtered, excludedSegmentIds]);
+  const allMatchingSelected = filtered.length > 0 && selectedSegments.length === filtered.length;
+
+  function toggleAllMatching() {
+    const matchingIds = new Set(filtered.map((segment) => segment.id));
+    setExcludedSegmentIds((previous) => allMatchingSelected
+      ? [...new Set([...previous, ...matchingIds])]
+      : previous.filter((id) => !matchingIds.has(id)));
+  }
 
   const mainSummary = useMemo(() => {
     if (mainLabelIds.length === 0) return t("Any");
@@ -271,9 +279,14 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             <Label htmlFor="add-gap" className="text-sm cursor-pointer">{t("Add 0.5s black gap between clips")}</Label>
           </div>
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-muted-foreground">{t("{0} of {1} matching clips selected for export", selectedSegments.length, filtered.length)}</div>
-            <Button variant="ghost" size="sm" disabled={isRendering || exportOrder?.projectId !== projectId} onClick={() => setExportOrder(null)}>{t("Reset order")}</Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={isRendering || filtered.length === 0} onClick={toggleAllMatching}>
+                {allMatchingSelected ? t("Deselect all") : t("Select all")}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={isRendering || exportOrder?.projectId !== projectId} onClick={() => setExportOrder(null)}>{t("Reset order")}</Button>
+            </div>
           </div>
           <div className="max-h-[40vh] overflow-auto rounded-md border">
             <Table>

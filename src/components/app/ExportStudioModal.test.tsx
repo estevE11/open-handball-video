@@ -146,6 +146,10 @@ it('allows excluding matching clips beyond the first 200 rows', () => {
   expect(boxes).toHaveLength(201);
   fireEvent.click(boxes[200]);
   expect(screen.getByText('200 of 201 matching clips selected for export')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
+  expect(screen.getByText('201 of 201 matching clips selected for export')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }));
+  expect(boxes.every(box => box.getAttribute('aria-checked') === 'false')).toBe(true);
 });
 
 it.each(['single video', 'multiple videos'])('keeps timeline numbers while reordering the %s export', async (mode) => {
@@ -228,4 +232,60 @@ it('shows an estimate from rendering progress and clears it on cancellation and 
   expect(screen.getByText('Estimating remaining time…')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel export' }));
   await screen.findByText('Export cancelled');
+});
+
+it.each(['single video', 'multiple videos'])('deselects all and exports just one clip for %s', async (mode) => {
+  URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  const first = state.createSegmentFromTrigger(state.mainLabels[0].id, 10)!;
+  const second = state.createSegmentFromTrigger(state.mainLabels[0].id, 30)!;
+  if (mode === 'multiple videos') useProjectStore.setState({
+    clips: ['first', 'second'].map((id) => ({ id, fileName: `${id}.mp4`, fileSize: 5, fileType: 'video/mp4', lastModified: 0, durationSec: 30 })),
+    session: { ...useProjectStore.getState().session, clipSources: [{ url: 'blob:first', file: null }, { url: 'blob:second', file: null }] },
+  });
+  let finish!: (blob: Blob) => void;
+  const pending = new Promise<Blob>(resolve => { finish = resolve; });
+  vi.mocked(exportFilteredSegmentsToMp4).mockReturnValue(pending);
+  vi.mocked(exportClipSequence).mockReturnValue(pending);
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }));
+  expect(screen.getByText('0 of 2 matching clips selected for export')).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Render MP4' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
+  expect(screen.getByText('2 of 2 matching clips selected for export')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }));
+  fireEvent.click(screen.getAllByRole('checkbox', { name: /^Include .* in export$/ })[1]);
+  expect(screen.getByText('1 of 2 matching clips selected for export')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  expect((screen.getByRole('button', { name: 'Select all' }) as HTMLButtonElement).disabled).toBe(true);
+  const exported = mode === 'multiple videos'
+    ? vi.mocked(exportClipSequence).mock.lastCall![2]
+    : vi.mocked(exportFilteredSegmentsToMp4).mock.lastCall![1];
+  expect(exported.map(segment => segment.id)).toEqual([second.id]);
+  expect(exported.map(segment => segment.id)).not.toContain(first.id);
+  await act(async () => finish(new Blob(['mp4'])));
+});
+
+it('bulk selection affects matching clips while preserving excluded hidden clips', () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
+  state.createSegmentFromTrigger(state.mainLabels[1].id, 30);
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  const boxes = () => screen.getAllByRole('checkbox', { name: /^Include .* in export$/ });
+  fireEvent.click(boxes()[0]);
+  fireEvent.click(screen.getAllByRole('combobox')[0]);
+  fireEvent.click(screen.getByRole('option', { name: state.mainLabels[1].name }));
+  fireEvent.keyDown(screen.getByPlaceholderText('Search main labels...'), { key: 'Escape' });
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }));
+  expect(screen.getByText('0 of 1 matching clips selected for export')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
+  fireEvent.click(screen.getAllByRole('combobox')[0]);
+  fireEvent.click(screen.getByRole('option', { name: 'Any' }));
+  fireEvent.keyDown(screen.getByPlaceholderText('Search main labels...'), { key: 'Escape' });
+  expect(boxes().map(box => box.getAttribute('aria-checked'))).toEqual(['false', 'true']);
 });
