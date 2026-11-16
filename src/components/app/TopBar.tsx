@@ -1,12 +1,12 @@
 import { useTranslation } from '@/lib/i18n';
-import { Undo2, Redo2, ChevronLeft, Download, Settings, Upload } from 'lucide-react';
-import { useMemo } from 'react';
+import { Undo2, Redo2, ChevronLeft, Download, Maximize, Minimize, Settings, Upload } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { DiagnosticsButton } from './DiagnosticsButton';
 import { Separator } from '@/components/ui/separator';
 import { useProjectStore } from '@/store/projectStore';
-import { useVideoStore } from '@/store/videoStore';
+import { recordDiagnostic } from '@/lib/diagnostics';
 
 type TopBarProps = {
   onOpenSettings: () => void;
@@ -21,9 +21,30 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
   const canUndo = useProjectStore((s) => s.past.length > 0);
   const canRedo = useProjectStore((s) => s.future.length > 0);
   const exportProjectJson = useProjectStore((s) => s.exportProjectJson);
-  const resetProject = useProjectStore((s) => s.resetProject);
   const updatedAtMs = useProjectStore((s) => s.updatedAtMs);
-  const resetVideoRuntime = useVideoStore((s) => s.reset);
+  const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement);
+  const [changingFullscreen, setChangingFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState(false);
+  const fullscreenSupported = fullscreen || (document.fullscreenEnabled !== false && typeof document.documentElement.requestFullscreen === 'function');
+
+  useEffect(() => {
+    const syncFullscreen = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  async function toggleFullscreen() {
+    if (changingFullscreen || !fullscreenSupported) return;
+    setChangingFullscreen(true); setFullscreenError(false);
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+      setFullscreen(!!document.fullscreenElement);
+    } catch (error) {
+      recordDiagnostic('warning', 'ui', 'fullscreen.failed', undefined, error);
+      setFullscreenError(true);
+    } finally { setChangingFullscreen(false); }
+  }
 
   const filename = useMemo(() => {
     const d = new Date(updatedAtMs);
@@ -83,14 +104,12 @@ export function TopBar({ onOpenSettings, onOpenExport, showBackButton, onBack }:
         <Button variant="outline" size="sm" onClick={onOpenSettings}>
           <Settings className="mr-2 h-4 w-4" />{t("Labels & Settings")}</Button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            if (onBack) onBack();
-            else { resetProject(); resetVideoRuntime(); }
-          }}
-        >{t("New")}</Button>
+        {fullscreenError && <span role="alert" className="max-w-48 text-xs text-destructive">{t("Could not change fullscreen mode. Try again.")}</span>}
+        <Button variant="ghost" size="icon" onClick={() => void toggleFullscreen()} disabled={!fullscreenSupported || changingFullscreen}
+          aria-label={fullscreen ? t("Exit fullscreen") : t("Enter fullscreen")} aria-pressed={fullscreen}
+          title={fullscreenSupported ? (fullscreen ? t("Exit fullscreen") : t("Enter fullscreen")) : t("Fullscreen is not supported by this browser.")}>
+          {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+        </Button>
       </div>
     </div>
   );
