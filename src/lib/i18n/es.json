@@ -158,6 +158,7 @@
   "Saved on this browser and device. Clearing site data removes saved projects.": "Guardado en este navegador y dispositivo. Borrar los datos del sitio elimina los proyectos guardados.",
   "Checking browser storage…": "Comprobando almacenamiento del navegador…",
   "Timeline": "Línea de tiempo",
+  "Hold a tag or its edge to edit; drag to scroll.": "Mantén pulsada una etiqueta o su borde para editar; arrastra para desplazarte.",
   "Labels": "Etiquetas",
   "Clip boundary: {0}": "Límite del clip: {0}",
   "Resize segment start": "Ajustar inicio del segmento",

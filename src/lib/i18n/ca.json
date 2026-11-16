@@ -158,6 +158,7 @@
   "Saved on this browser and device. Clearing site data removes saved projects.": "Desat en aquest navegador i dispositiu. Esborrar les dades del lloc elimina els projectes desats.",
   "Checking browser storage…": "Comprovant l’emmagatzematge del navegador…",
   "Timeline": "Línia de temps",
+  "Hold a tag or its edge to edit; drag to scroll.": "Mantén premuda una etiqueta o la seva vora per editar; arrossega per desplaçar-te.",
   "Labels": "Etiquetes",
   "Clip boundary: {0}": "Límit del clip: {0}",
   "Resize segment start": "Ajusta l’inici del segment",

@@ -50,6 +50,8 @@ Diagnostics are local and are never sent automatically. Videos, label text, cont
 
 ## Playback and clip titles
 
+On touch screens, swipe the timeline to scroll. Hold a tag for 0.4 seconds until its outline thickens, then drag to move it; hold near its left or right edge to resize. A quick tap selects the tag and seeks to its start. Each completed drag is one undo step.
+
 Playback speeds are 0.5×, 1×, 2×, 2.5×, and 3×. Tap Space to play or pause. Hold Space for temporary 1× playback; release it to restore the selected speed and previous playing or paused state. Hold J also temporarily switches to 1×. Left/right arrows seek backward/forward five seconds. Comma steps one frame backward; period steps one frame forward. Frame stepping pauses playback and uses the current source clip's frame rate (or the configured fallback). Playback shortcuts work even when player buttons, the speed selector, or the timeline slider have focus; use Enter or a click to open the speed menu. These shortcuts leave text editing and dialog controls alone.
 
 Use a clip's pencil button or double-click its title to rename that individual event. Clearing the title restores its tag type as the default. Renaming keeps the tag type and all sibling clips unchanged. Exported videos show the individual name at 44 px and its type underneath at 22 px; Export Studio previews both. Shared type names remain editable in Settings. Names already changed globally by older versions can be corrected there; the old data does not record which individual clip was intended.

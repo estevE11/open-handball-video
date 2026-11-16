@@ -1,4 +1,5 @@
 import { useLocalizedLabels } from '@/hooks/useLocalizedLabels';
+import { useTimelineTouchEditing } from '@/hooks/useTimelineTouchEditing';
 import { useTranslation } from '@/lib/i18n';
 import { Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -48,6 +49,10 @@ export function TimelinePanel() {
     null,
   );
   const [dragging, setDragging] = useState<null | { segId: string; originX: number; originStart: number; originEnd: number }>(null);
+  const activateTouchEdit = useCallback(() => {
+    setScrubbing(false); setResizing(null); setDragging(null);
+  }, []);
+  const { editingId: touchEditingId, suppressCompatibilityMouse } = useTimelineTouchEditing(scrollRef, pps, durationSec, activateTouchEdit);
 
   const updateSegmentTimes = useProjectStore((s) => s.updateSegmentTimes);
 
@@ -192,6 +197,7 @@ export function TimelinePanel() {
     <Panel
       title={t("Timeline")}
       className="h-full overflow-hidden"
+      headerContent={<span className="hidden truncate text-[10px] text-muted-foreground [@media(pointer:coarse)]:block">{t("Hold a tag or its edge to edit; drag to scroll.")}</span>}
       right={
         <div className="flex items-center gap-1">
           <div className="mr-2 hidden font-mono text-xs text-muted-foreground md:block">{formatTimecode(currentTimeSec)}</div>
@@ -204,7 +210,8 @@ export function TimelinePanel() {
         </div>
       }
     >
-      <div ref={scrollRef} className="h-full min-w-0 overflow-auto" aria-label={t('Timeline tracks')}>
+      <div ref={scrollRef} className="h-full min-w-0 select-none overflow-auto" aria-label={t('Timeline tracks')}
+        style={{ WebkitTouchCallout: 'none' }} onMouseDownCapture={suppressCompatibilityMouse} onClickCapture={suppressCompatibilityMouse}>
         <div style={{ width: LABEL_COL_W + timelineW, height: HEADER_H + trackH }} className="relative">
           {/* Header */}
           <div className="sticky top-0 z-20 flex h-[28px] bg-card">
@@ -278,9 +285,11 @@ export function TimelinePanel() {
                 return (
                   <div
                     key={seg.id}
+                    data-timeline-segment={seg.id}
                     className={cn(
                       "absolute z-10 rounded-sm border border-black/10 transition-shadow",
-                      isSelected ? "opacity-100 ring-2 ring-primary ring-offset-1 ring-offset-background z-20" : "opacity-90 hover:opacity-100"
+                      touchEditingId === seg.id ? "opacity-100 ring-4 ring-primary ring-offset-1 ring-offset-background z-20"
+                        : isSelected ? "opacity-100 ring-2 ring-primary ring-offset-1 ring-offset-background z-20" : "opacity-90 hover:opacity-100"
                     )}
                     style={{ left, width, top, height: h, backgroundColor: label.color }}
                     title={`${getSegmentTitles(seg, label ?? { name: t('Tag') }).primaryText} · ${label.name} ${formatTimecode(seg.startTimeSec)} → ${formatTimecode(seg.endTimeSec)}`}
