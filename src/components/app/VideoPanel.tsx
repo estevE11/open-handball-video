@@ -52,6 +52,9 @@ export function VideoPanel() {
   const clipOffset = activeClip?.start ?? 0;
   const activeUrl = clips ? clipSources[clipIndex]?.url : videoSourceUrl;
   const hasNextClip = !!clips && clipIndex < clips.length - 1;
+  const clipDescription = activeClip
+    ? t("Clip {0}/{1}: {2}", clipIndex + 1, clips?.length ?? 0, activeClip.clip.fileName)
+    : videoMeta?.fileName;
   const [playbackError, setPlaybackError] = useState('');
 
   const [scrubValue, setScrubValue] = useState<number[]>([0]);
@@ -138,7 +141,7 @@ export function VideoPanel() {
 
   const right = useMemo(() => {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
         <div className="font-mono text-xs text-muted-foreground">
           {formatTimecode(currentTimeSec)} / {formatTimecode(durationSec || 0)}
         </div>
@@ -156,7 +159,9 @@ export function VideoPanel() {
   };
 
   return (
-    <Panel title={t("Player")} right={right}>
+    <Panel title={t("Player")} right={right} headerContent={clipDescription ? (
+      <div className="truncate text-xs text-muted-foreground" title={clipDescription}>{clipDescription}</div>
+    ) : undefined}>
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto] gap-2 p-2">
         <div className={cn('relative min-h-0 overflow-hidden rounded-md border bg-black')}>
           {activeUrl ? (
@@ -304,9 +309,6 @@ export function VideoPanel() {
               </SelectContent>
             </Select>
 
-            {videoMeta?.fileName ? (
-              <div className="ml-2 hidden min-w-0 max-w-[260px] truncate text-xs text-muted-foreground md:block">{activeClip ? t("Clip {0}/{1}: {2}", clipIndex + 1, clips?.length ?? 0, activeClip.clip.fileName) : videoMeta.fileName}</div>
-            ) : null}
           </div>
         </div>
       </div>
