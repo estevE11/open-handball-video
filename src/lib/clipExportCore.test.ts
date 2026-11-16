@@ -3,7 +3,7 @@ import { renderClipExport, type ClipExportBackend, type ExportPiece } from '../.
 
 function backend(): ClipExportBackend {
   return {
-    fontName: 'font.ttf', loadSource: vi.fn(async (index) => `input-${index}`), releaseSource: vi.fn(async () => {}),
+    fontName: 'font.ttf', measureText: (text, size) => text.length * size, loadSource: vi.fn(async (index) => `input-${index}`), releaseSource: vi.fn(async () => {}),
     probe: vi.fn(async () => ({ width: 1280, height: 720, hasAudio: true })),
     exec: vi.fn(async () => {}), write: vi.fn(async () => {}), read: vi.fn(async () => new Uint8Array([1, 2])), remove: vi.fn(async () => {}),
   };

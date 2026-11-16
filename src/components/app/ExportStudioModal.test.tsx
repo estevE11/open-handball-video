@@ -89,6 +89,7 @@ it('cancels without downloading and permits an immediate retry', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
   await screen.findByText('Export ready');
   expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+  expect(vi.mocked(exportFilteredSegmentsToMp4).mock.lastCall?.[3]?.secondaryLabels).toEqual(useProjectStore.getState().secondaryLabels);
 });
 
 it.each(['single video', 'multiple videos'])('exports only checked matching clips for %s', async (mode) => {

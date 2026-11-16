@@ -1,4 +1,5 @@
-import type { LabelSet, MainLabel, ProjectData, Segment } from "./project";
+import type { LabelSet, MainLabel, SecondaryLabel, ProjectData, Segment } from "./project";
+import type { ExportPiece } from '../../electron/clipExportCore';
 import type { LibraryCatalog, LibraryChange } from '../../electron/libraryCatalog';
 
 export interface ElectronAPI {
@@ -13,7 +14,7 @@ export interface ElectronAPI {
   runNativeClipExport: (opts: {
     exportId?: string;
     inputPaths: string[];
-    pieces: { sourceIndex: number; startTimeSec: number; endTimeSec: number; segmentIndex: number; primaryText: string; secondaryText?: string }[];
+    pieces: ExportPiece[];
     addGap: boolean;
   }) => Promise<Uint8Array>;
   getClipProjects: () => Promise<ProjectData[]>;
@@ -26,7 +27,8 @@ export interface ElectronAPI {
     inputPath: string;
     segments: Segment[];
     addGap: boolean;
-    mainLabels: MainLabel[]
+    mainLabels: MainLabel[];
+    secondaryLabels?: SecondaryLabel[];
   }) => Promise<Uint8Array>;
 }
 

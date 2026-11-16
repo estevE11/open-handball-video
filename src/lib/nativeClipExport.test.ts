@@ -31,8 +31,8 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
     let bytes: Uint8Array;
     const progress: number[] = [];
     if (mode === 'native') bytes = await nativeClipExport({ inputPaths: [red, blue], addGap: true, pieces: [
-      { sourceIndex: 0, startTimeSec: 1, endTimeSec: 2, segmentIndex: 0, primaryText: '3:2:1', secondaryText: 'Attack' },
-      { sourceIndex: 1, startTimeSec: 0, endTimeSec: 1, segmentIndex: 0, primaryText: '3:2:1', secondaryText: 'Attack' },
+      { sourceIndex: 0, startTimeSec: 1, endTimeSec: 2, segmentIndex: 0, primaryText: '3:2:1', secondaryText: 'Attack', secondaryLabelsText: 'P1, P2' },
+      { sourceIndex: 1, startTimeSec: 0, endTimeSec: 1, segmentIndex: 0, primaryText: '3:2:1', secondaryText: 'Attack', secondaryLabelsText: 'P1, P2' },
       { sourceIndex: 1, startTimeSec: 1, endTimeSec: 1.5, segmentIndex: 1, primaryText: 'Defense' },
     ] }, { ffmpegPath, ffprobePath, fontPath: path.resolve('public/fonts/Roboto-Bold.ttf') }, (_, ratio) => progress.push(ratio));
     else {
@@ -86,9 +86,9 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
       const files = await Promise.all([red, blue].map(async (name) => new File([new Uint8Array(await fs.readFile(name))], path.basename(name))));
       const clips = files.map((file, index) => ({ ...fileMeta(file), id: String(index), durationSec: 2 }));
       const blob = await exportClipSequence(clips, files, [
-        { id: 'a', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 1, endTimeSec: 3, secondaryLabelIds: [], createdAtMs: 0 },
+        { id: 'a', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 1, endTimeSec: 3, secondaryLabelIds: ['p1', 'p2'], createdAtMs: 0 },
         { id: 'b', mainLabelId: 'defense', startTimeSec: 3, endTimeSec: 3.5, secondaryLabelIds: [], createdAtMs: 0 },
-      ], { onProgress: (_, ratio) => progress.push(ratio), addGap: true, mainLabels: [
+      ], { onProgress: (_, ratio) => progress.push(ratio), addGap: true, secondaryLabels: [{ id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }], mainLabels: [
         { id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 },
         { id: 'defense', name: 'Defense', color: '#fff', hotkey: 'D', preRollSec: 2, postRollSec: 3 },
       ] });
@@ -100,14 +100,16 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
       const singleFile = new File([new Uint8Array(await fs.readFile(longSource))], 'long-red.mp4');
       const singleProgress: number[] = [];
       const single = await exportFilteredSegmentsToMp4(singleFile, [
-        { id: 'single', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0, endTimeSec: 8, secondaryLabelIds: [], createdAtMs: 0 },
-      ], 'single.mp4', { onProgress: (_, ratio) => singleProgress.push(ratio), mainLabels: [{ id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 }] });
+        { id: 'single', name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0, endTimeSec: 8, secondaryLabelIds: ['p1', 'p2'], createdAtMs: 0 },
+      ], 'single.mp4', { onProgress: (_, ratio) => singleProgress.push(ratio), secondaryLabels: [{ id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }],
+        mainLabels: [{ id: 'attack', name: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 2, postRollSec: 3 }] });
       expect(singleProgress.some((ratio) => ratio > 0.15 && ratio < 0.85)).toBe(true);
       expect(singleProgress).toEqual([...singleProgress].sort((a, b) => a - b));
       expect(singleProgress.at(-1)).toBe(1);
       const singleOutput = path.join(directory, 'single.mp4');
       await fs.writeFile(singleOutput, new Uint8Array(await single.arrayBuffer()));
       await expectTitleBands(singleOutput);
+      await expectInlineLabels(singleOutput);
 
       for (const addGap of [false, true]) {
         const silent = await exportFilteredSegmentsToMp4(files[1], [
@@ -135,6 +137,8 @@ it.each(['native', 'wasm'])('%s renders a tag across clips with mixed formats an
     expect(progress.at(-1)).toBe(mode === 'native' ? 0.99 : 1);
     const output = path.join(directory, 'export.mp4'); await fs.writeFile(output, bytes);
     await expectTitleBands(output);
+    // Secondary tags are on the right of the large title, not in the lower caption.
+    await expectInlineLabels(output);
     const probe = JSON.parse((await run(ffprobePath, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', output])).stdout);
     expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(3);
     expect(Number(probe.format.duration)).toBeLessThan(3.2);
@@ -163,4 +167,13 @@ async function expectTitleBands(output: string) {
     }
     expect(whitePixels).toBeGreaterThan(100);
   }
+}
+
+async function expectInlineLabels(output: string) {
+  const inline = await run(ffmpegPath, ['-v', 'error', '-ss', '0.5', '-i', output, '-frames:v', '1', '-vf', 'crop=110:44:180:30,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { encoding: 'buffer' });
+  let white = 0;
+  for (let i = 0; i < inline.stdout.length; i += 3) {
+    if (inline.stdout[i] > 190 && inline.stdout[i + 1] > 190 && inline.stdout[i + 2] > 190) white++;
+  }
+  expect(white).toBeGreaterThan(60);
 }

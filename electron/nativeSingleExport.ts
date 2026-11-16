@@ -4,11 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { monotonicProgress, type ExportProgress } from './exportProgress.js';
 import { readTemporaryVideoExport } from './temporaryVideoExport.js';
 import { getSegmentTitles } from './segmentTitles.js';
+import { exportTitleOverlay } from './exportTitleOverlay.js';
+import { createExportTextMeasurer } from './exportFontMetrics.js';
+import { readFile } from 'node:fs/promises';
 
 export type NativeSingleExportOptions = {
   inputPath: string;
-  segments: { name?: string; mainLabelId: string; startTimeSec: number; endTimeSec: number }[];
+  segments: { name?: string; mainLabelId: string; startTimeSec: number; endTimeSec: number; secondaryLabelIds?: string[] }[];
   mainLabels: { id: string; name: string }[];
+  secondaryLabels?: { id: string; name: string }[];
   addGap: boolean;
 };
 type NativeExportConfig = { ffmpegPath: string; ffprobePath: string; fontPath: string };
@@ -24,7 +28,7 @@ export async function nativeSingleExport(opts: NativeSingleExportOptions, config
 }
 
 async function renderNativeSingleExport(
-  { inputPath, outputPath, segments, addGap, mainLabels }: NativeSingleExportOptions & { outputPath: string },
+  { inputPath, outputPath, segments, addGap, mainLabels, secondaryLabels }: NativeSingleExportOptions & { outputPath: string },
   { ffmpegPath, ffprobePath, fontPath }: NativeExportConfig,
   onProgress: ExportProgress,
   signal?: AbortSignal,
@@ -42,6 +46,7 @@ async function renderNativeSingleExport(
   const hasAudio = !!audio;
   const sampleRate = Number(audio?.sample_rate) || 48000;
   const hasDrawtext = (await run(ffmpegPath, ['-filters'])).includes('drawtext');
+  const measureText = hasDrawtext ? createExportTextMeasurer(await readFile(fontPath)) : () => 0;
   const args = ['-hide_banner', '-y', '-i', inputPath];
   
   let filterComplex = '';
@@ -49,17 +54,11 @@ async function renderNativeSingleExport(
 
   segments.forEach((seg, i) => {
     const label = mainLabels.find((l) => l.id === seg.mainLabelId);
-    const { primaryText, secondaryText } = getSegmentTitles(seg, label);
+    const titles = getSegmentTitles(seg, label, secondaryLabels);
 
     let overlayFilter = '';
     if (hasDrawtext) {
-      const pText = primaryText.replace(/'/g, "'\\\\''").replace(/:/g, '\\:');
-      const sText = secondaryText ? secondaryText.replace(/'/g, "'\\\\''").replace(/:/g, '\\:') : '';
-
-      overlayFilter = `,drawtext=fontfile='${fontPath}':expansion=none:text='${pText}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
-      if (secondaryText) {
-        overlayFilter += `,drawtext=fontfile='${fontPath}':expansion=none:text='${sText}':x=30:y=85:fontsize=22:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
-      }
+      overlayFilter = `,${exportTitleOverlay(titles, fontPath, measureText)}`;
     }
 
     filterComplex += `[0:v]trim=start=${seg.startTimeSec}:end=${seg.endTimeSec},setpts=PTS-STARTPTS${overlayFilter}[v${i}]; `;

@@ -1,4 +1,5 @@
 import { monotonicProgress } from './exportProgress.js';
+import { exportTitleOverlay, type MeasureExportText } from './exportTitleOverlay.js';
 /** Shared by the native and WebAssembly exporters. No browser or Node dependencies. */
 export type ExportPiece = {
   sourceIndex: number;
@@ -7,6 +8,7 @@ export type ExportPiece = {
   segmentIndex: number;
   primaryText: string;
   secondaryText?: string;
+  secondaryLabelsText?: string;
 };
 export type MediaInfo = { width: number; height: number; hasAudio: boolean };
 export type ClipExportBackend = {
@@ -18,11 +20,8 @@ export type ClipExportBackend = {
   read: (name: string) => Promise<Uint8Array>;
   remove: (name: string) => Promise<void>;
   fontName: string;
+  measureText: MeasureExportText;
 };
-
-function escapeText(text: string) {
-  return text.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "'\\\\''").replace(/[\r\n]/g, ' ');
-}
 
 export async function renderClipExport(backend: ClipExportBackend, pieces: ExportPiece[], addGap: boolean,
   onProgress: (phase: string, ratio: number) => void = () => {}) {
@@ -52,8 +51,7 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
         const args = ['-hide_banner', '-y', '-ss', piece.startTimeSec.toFixed(6), '-i', loaded];
         if (!info.hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
         let filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p`;
-        filter += `,drawtext=fontfile=${backend.fontName}:expansion=none:text='${escapeText(piece.primaryText)}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
-        if (piece.secondaryText) filter += `,drawtext=fontfile=${backend.fontName}:expansion=none:text='${escapeText(piece.secondaryText)}':x=30:y=85:fontsize=22:fontcolor=white`;
+        filter += `,${exportTitleOverlay(piece, backend.fontName, backend.measureText)}`;
         args.push('-t', duration.toFixed(6), '-map', '0:v:0', '-map', info.hasAudio ? '0:a:0' : '1:a:0',
           '-vf', filter, '-af', 'apad', ...encode, outputs[index]);
         const phase = `Rendering clip ${index + 1} of ${pieces.length}`;

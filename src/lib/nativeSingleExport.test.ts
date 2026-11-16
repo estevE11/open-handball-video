@@ -21,9 +21,10 @@ it.each([{ addGap: false, audio: false }, { addGap: true, audio: false }, { addG
     const outputPath = path.join(directory, 'out.mp4');
     await run(ffmpegPath, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x240:r=25', ...(audio ? ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000'] : []), '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', inputPath]);
     const progress: number[] = [];
-    const bytes = await nativeSingleExport({ inputPath: pathToFileURL(inputPath).href, addGap, mainLabels: [{ id: 'attack', name: 'Attack' }], segments: [
-      { name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0.5, endTimeSec: 1.5 },
-      { mainLabelId: 'attack', startTimeSec: 2, endTimeSec: 3 },
+    const bytes = await nativeSingleExport({ inputPath: pathToFileURL(inputPath).href, addGap, mainLabels: [{ id: 'attack', name: 'Attack' }],
+      secondaryLabels: [{ id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }], segments: [
+      { name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0.5, endTimeSec: 1.5, secondaryLabelIds: ['p1', 'p2'] },
+      { name: 'Attack', mainLabelId: 'attack', startTimeSec: 2, endTimeSec: 3 },
     ] }, { ffmpegPath, ffprobePath, fontPath: path.resolve('public/fonts/Roboto-Bold.ttf') }, (_, ratio) => progress.push(ratio));
     expect(progress.some((ratio) => ratio > 0.1 && ratio <= 0.98)).toBe(true);
     expect(progress).toEqual([...progress].sort((a, b) => a - b));
@@ -34,6 +35,12 @@ it.each([{ addGap: false, audio: false }, { addGap: true, audio: false }, { addG
     const probe = JSON.parse((await run(ffprobePath, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', outputPath])).stdout);
     expect(Number(probe.format.duration)).toBeCloseTo(addGap ? 2.5 : 2, 1);
     expect(probe.streams.map((stream: { codec_type: string }) => stream.codec_type)).toEqual(['video', 'audio']);
+    const caption = await run(ffmpegPath, ['-v', 'error', '-ss', addGap ? '2' : '1.5', '-i', outputPath, '-frames:v', '1', '-vf', 'crop=220:22:30:85,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { encoding: 'buffer' });
+    let white = 0;
+    for (let i = 0; i < caption.stdout.length; i += 3) {
+      if (caption.stdout[i] > 190 && caption.stdout[i + 1] > 190 && caption.stdout[i + 2] > 190) white++;
+    }
+    expect(white).toBe(0);
     // Decode each clip and the optional black gap, verifying there are no missing parts.
     for (const [time, black] of [[0.5, false], [addGap ? 2 : 1.5, false], ...(addGap ? [[1.25, true]] : [])]) {
       const frame = await run(ffmpegPath, ['-v', 'error', '-ss', String(time), '-i', outputPath, '-frames:v', '1', '-vf', 'crop=2:2:200:180,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { encoding: 'buffer' });

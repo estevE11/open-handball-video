@@ -23,7 +23,7 @@ it('steps across source boundaries using the adjacent clip frame rate', () => {
 });
 
 it('defaults event titles to their type and keeps custom titles separate', () => {
-  expect(getSegmentTitles({}, { name: 'Attack' })).toEqual({ primaryText: 'Attack', secondaryText: 'Attack' });
-  expect(getSegmentTitles({ name: ' 3:2:1 ' }, { name: 'Attack' })).toEqual({ primaryText: '3:2:1', secondaryText: 'Attack' });
-  expect(getSegmentTitles({ name: ' ' }, { name: 'Defense' })).toEqual({ primaryText: 'Defense', secondaryText: 'Defense' });
+  expect(getSegmentTitles({}, { name: 'Attack' })).toEqual({ primaryText: 'Attack', secondaryText: '', secondaryLabelsText: '' });
+  expect(getSegmentTitles({ name: ' 3:2:1 ' }, { name: 'Attack' })).toEqual({ primaryText: '3:2:1', secondaryText: 'Attack', secondaryLabelsText: '' });
+  expect(getSegmentTitles({ name: ' ' }, { name: 'Defense' })).toEqual({ primaryText: 'Defense', secondaryText: '', secondaryLabelsText: '' });
 });

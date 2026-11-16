@@ -6,6 +6,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { renderClipExport, type ExportPiece } from './clipExportCore.js';
+import { createExportTextMeasurer } from './exportFontMetrics.js';
 
 export async function nativeClipExport(opts: { inputPaths: string[]; pieces: ExportPiece[]; addGap: boolean },
   config: { ffmpegPath: string; ffprobePath: string; fontPath: string }, onProgress: ExportProgress = () => {}, signal?: AbortSignal) {
@@ -18,6 +19,7 @@ export async function nativeClipExport(opts: { inputPaths: string[]; pieces: Exp
     await fs.copyFile(config.fontPath, path.join(directory, 'font.ttf'));
     return await renderClipExport({
       fontName: 'font.ttf',
+      measureText: createExportTextMeasurer(await fs.readFile(config.fontPath)),
       loadSource: async (index) => {
         let source = opts.inputPaths[index];
         if (source?.startsWith('file:')) source = fileURLToPath(source);

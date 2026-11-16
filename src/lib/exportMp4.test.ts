@@ -100,7 +100,7 @@ it('renders an individual title large and its unchanged tag type small', async (
     mainLabels: [{ id: 'label', name: 'Attack', defaultName: 'Attack', color: '#fff', hotkey: 'A', preRollSec: 1, postRollSec: 1 }],
   });
   const filters = ffmpeg.exec.mock.calls.flat().flat().filter((arg: string) => arg.includes('drawtext')).join(' ');
-  expect(filters).toContain("text='3\\:2\\:1':x=30:y=30:fontsize=44");
+  expect(filters).toContain("text='3\\:2\\:1':x=30:y=64-ascent:fontsize=44");
   expect(filters).toContain("text='Attack':x=30:y=85:fontsize=22");
 });
 
@@ -123,7 +123,7 @@ it('uses native export bytes directly without leaving an intermediate beside the
   try {
     const blob = await exportFilteredSegmentsToMp4('file:///videos/match%20%23100%25.mp4', segments);
     expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([4, 5, 6]);
-    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: 'file:///videos/match%20%23100%25.mp4', segments, addGap: false, mainLabels: [] });
+    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: 'file:///videos/match%20%23100%25.mp4', segments, addGap: false, mainLabels: [], secondaryLabels: [] });
     expect(electron.readFile).not.toHaveBeenCalled();
   } finally { delete window.electron; }
 });

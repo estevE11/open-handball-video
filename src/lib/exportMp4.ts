@@ -1,8 +1,9 @@
 import { FFmpegExitError, withNativeExportProgress } from '@/lib/exportProgress';
 import { monotonicProgress } from '../../electron/exportProgress';
 import { getSegmentTitles } from '../../electron/segmentTitles';
+import { exportTitleOverlay } from '../../electron/exportTitleOverlay';
 
-import type { MainLabel, Segment } from '@/types/project';
+import type { MainLabel, SecondaryLabel, Segment } from '@/types/project';
 import { withIsolatedBrowserExport } from '@/lib/browserIsolatedExport';
 import { checkExportCancelled } from '../../electron/exportCancellation';
 import { recordDiagnostic } from '@/lib/diagnostics';
@@ -11,16 +12,12 @@ function toFixedSec(v: number): string {
   return (Math.max(0, v) || 0).toFixed(3);
 }
 
-function escapeFfmpegText(text: string): string {
-  // ffmpeg drawtext needs ':' and '\' escaped.
-  return text.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "'\\\\''");
-}
-
 export type ExportMp4Options = {
   signal?: AbortSignal;
   onProgress?: (phase: string, ratio: number) => void;
   addGap?: boolean;
   mainLabels?: MainLabel[];
+  secondaryLabels?: SecondaryLabel[];
 };
 
 export async function exportFilteredSegmentsToMp4(
@@ -33,6 +30,7 @@ export async function exportFilteredSegmentsToMp4(
   checkExportCancelled(opts.signal);
   const addGap = opts.addGap ?? false;
   const mainLabels = opts.mainLabels ?? [];
+  const secondaryLabels = opts.secondaryLabels ?? [];
 
   // ELECTRON NATIVE EXPORT PATH
   if (window.electron && typeof videoInput === 'string' && videoInput.startsWith('file://')) {
@@ -44,7 +42,8 @@ export async function exportFilteredSegmentsToMp4(
         inputPath,
         segments,
         addGap,
-        mainLabels
+        mainLabels,
+        secondaryLabels,
       }), onProgress, opts.signal);
 
       // Ensure we return a Blob backed by a normal ArrayBuffer (not SharedArrayBuffer).
@@ -134,19 +133,14 @@ export async function exportFilteredSegmentsToMp4(
 
       // Overlay logic
       const label = mainLabels.find(l => l.id === seg.mainLabelId);
-      const { primaryText, secondaryText } = getSegmentTitles(seg, label);
-
-      let vf = 'format=yuv420p';
-      vf += `,drawtext=fontfile=${fontName}:expansion=none:text='${escapeFfmpegText(primaryText)}':x=30:y=30:fontsize=44:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
-      if (secondaryText) {
-        vf += `,drawtext=fontfile=${fontName}:expansion=none:text='${escapeFfmpegText(secondaryText)}':x=30:y=85:fontsize=22:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2`;
-      }
+      const titles = getSegmentTitles(seg, label, secondaryLabels);
+      const vf = `format=yuv420p,${exportTitleOverlay(titles, fontName, backend.measureText)}`;
 
       const phase = `Rendering clip ${i + 1} of ${valid.length}`;
       commandContext = { stage: 'clip', sourceIndex: 0, renderIndex: i + 1, renderCount: valid.length,
         selectionIndex: segments.findIndex(segment => segment.id === seg.id) + 1,
         startTimeSec: Number(start), endTimeSec: seg.endTimeSec, durationSec: Number(dur),
-        secondaryOverlay: !!secondaryText };
+        secondaryOverlay: !!titles.secondaryText, secondaryLabelCount: seg.secondaryLabelIds.length };
       commandProgress = (seconds) => onProgress(phase, 0.15 + (renderedDuration + Math.min(Number(dur), seconds)) / totalDuration * 0.7);
       commandProgress(0);
       console.info('[export] cutting clip', {

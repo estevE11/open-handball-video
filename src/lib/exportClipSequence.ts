@@ -4,17 +4,17 @@ import { getSegmentTitles } from '../../electron/segmentTitles';
 import { withIsolatedBrowserExport } from '@/lib/browserIsolatedExport';
 import { checkExportCancelled } from '../../electron/exportCancellation';
 import { splitSegmentsAcrossClips } from '@/lib/clipTimeline';
-import type { MainLabel, Segment, VideoClip } from '@/types/project';
+import type { MainLabel, SecondaryLabel, Segment, VideoClip } from '@/types/project';
 import { renderClipExport, type ExportPiece } from '../../electron/clipExportCore';
 
 export async function exportClipSequence(clips: VideoClip[], inputs: (File | string)[], segments: Segment[],
-  opts: { signal?: AbortSignal; addGap?: boolean; mainLabels: MainLabel[]; onProgress?: (phase: string, ratio: number) => void }) {
+  opts: { signal?: AbortSignal; addGap?: boolean; mainLabels: MainLabel[]; secondaryLabels?: SecondaryLabel[]; onProgress?: (phase: string, ratio: number) => void }) {
   const report = monotonicProgress((phase, ratio) => { if (!opts.signal?.aborted) opts.onProgress?.(phase, ratio); });
   checkExportCancelled(opts.signal);
   if (inputs.length !== clips.length) throw new Error('Restore all original clips before exporting.');
   const pieces: ExportPiece[] = splitSegmentsAcrossClips(clips, segments).map((part) => {
     const label = opts.mainLabels.find((item) => item.id === part.segment.mainLabelId);
-    return { ...part, ...getSegmentTitles(part.segment, label) };
+    return { ...part, ...getSegmentTitles(part.segment, label, opts.secondaryLabels) };
   });
   if (!pieces.length) throw new Error('No segments to export.');
   if (window.electron && inputs.every((input) => typeof input === 'string' && input.startsWith('file://'))) {

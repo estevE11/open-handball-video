@@ -6,6 +6,7 @@ import { loadBrowserExportSource } from './browserExportSource';
 import { probeExportMedia } from './exportMediaProbe';
 import { runWasmExportCommand } from './exportProgress';
 import { recordDiagnostic } from './diagnostics';
+import { createExportTextMeasurer } from '../../electron/exportFontMetrics';
 
 type Media = Awaited<ReturnType<typeof probeExportMedia>>;
 type Backend = ClipExportBackend & { probeMedia: (name: string) => Promise<Media> };
@@ -62,6 +63,11 @@ export async function withIsolatedBrowserExport<T>(inputs: (File | string)[], si
   };
   const backend: Backend = {
     fontName: 'font.ttf',
+    // Lazy: exports without inline secondary labels need no font measurement.
+    measureText: (() => {
+      let measure: ReturnType<typeof createExportTextMeasurer> | undefined;
+      return (text: string, size: number) => (measure ??= createExportTextMeasurer(font))(text, size);
+    })(),
     loadSource: async (index) => {
       checkExportCancelled(signal);
       if (!inputs[index]) throw new Error('Restore all original clips before exporting.');

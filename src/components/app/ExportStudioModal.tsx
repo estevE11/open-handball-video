@@ -343,7 +343,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                               aria-label={t("Move clip {0} down", timelineNumber)} onClick={() => moveSegment(seg.id, filtered[index + 1].id)}><ArrowDown className="h-3 w-3" aria-hidden /></Button>
                           </div>
                         </TableCell>
-                        <TableCell className="font-medium"><div>{titles.primaryText}</div><div className="text-xs font-normal text-muted-foreground">{titles.secondaryText}</div></TableCell>
+                        <TableCell className="font-medium"><div>{titles.primaryText}</div>{titles.secondaryText && <div className="text-xs font-normal text-muted-foreground">{titles.secondaryText}</div>}</TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.startTimeSec)}</TableCell>
                         <TableCell className="font-mono text-xs">{formatTimecode(seg.endTimeSec)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{tags || '—'}</TableCell>
@@ -430,7 +430,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (selected)', selectedSegments.length);
                     const options = {
-                      addGap, mainLabels, signal: controller.signal,
+                      addGap, mainLabels, secondaryLabels, signal: controller.signal,
                       onProgress: (p: string, r: number) => {
                         if (controller.signal.aborted) return;
                         if (p !== lastPhase) recordDiagnostic('info', 'export', 'export.phase', { operationId, phase: p, ratio: r });
