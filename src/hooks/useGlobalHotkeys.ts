@@ -104,7 +104,11 @@ export function useGlobalHotkeys() {
       const main = project.mainLabels.find((label) => !label.archived && label.hotkey.toUpperCase() === key);
       if (main) { consume(e); project.createSegmentFromTrigger(main.id, video.currentTimeSec); return; }
       const secondary = project.secondaryLabels.find((label) => !label.archived && label.hotkey?.toUpperCase() === key);
-      if (secondary) { consume(e); project.toggleSecondaryOnSelectedSegment(secondary.id); }
+      if (secondary) { consume(e); project.toggleSecondaryOnSelectedSegment(secondary.id); return; }
+      if (key === 'M') {
+        consume(e);
+        if (!e.repeat) video.setIsMuted(!video.isMuted);
+      }
     }
     function onBlur() { cancelHolds(); }
     const unsubscribe = useProjectStore.subscribe((state, previous) => {

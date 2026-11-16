@@ -169,6 +169,7 @@ export function VideoPanel() {
               key={activeUrl}
               ref={videoRef}
               src={activeUrl}
+              muted={isMuted}
               className="h-full w-full object-contain"
               onTimeUpdate={(e) => {
                 if (e.currentTarget !== videoRef.current) return;

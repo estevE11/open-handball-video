@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 
+const MUTE_STORAGE_KEY = 'ohv.playback.muted.v1';
+
+function savedMuteSetting() {
+  try { return localStorage.getItem(MUTE_STORAGE_KEY) === 'true'; }
+  catch { return false; }
+}
+
 type VideoRuntimeState = {
   currentTimeSec: number;
   durationSec: number;
@@ -20,7 +27,7 @@ export const useVideoStore = create<VideoRuntimeState>((set) => ({
   currentTimeSec: 0,
   durationSec: 0,
   isPlaying: false,
-  isMuted: false,
+  isMuted: savedMuteSetting(),
   playbackRate: 1,
 
   setCurrentTimeSec: (t) =>
@@ -34,10 +41,13 @@ export const useVideoStore = create<VideoRuntimeState>((set) => ({
     set({ durationSec: Math.max(0, d) });
   },
   setIsPlaying: (p) => set({ isPlaying: p }),
-  setIsMuted: (m) => set({ isMuted: m }),
+  setIsMuted: (m) => {
+    try { localStorage.setItem(MUTE_STORAGE_KEY, String(m)); } catch { /* Keep playback working when storage is unavailable. */ }
+    set({ isMuted: m });
+  },
   setPlaybackRate: (r) => set({ playbackRate: r }),
 
-  reset: () => set({ currentTimeSec: 0, durationSec: 0, isPlaying: false, isMuted: false, playbackRate: 1 }),
+  reset: () => set({ currentTimeSec: 0, durationSec: 0, isPlaying: false, playbackRate: 1 }),
 }));
 
 

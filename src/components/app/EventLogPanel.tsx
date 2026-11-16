@@ -3,7 +3,7 @@ import { useTranslation } from '@/lib/i18n';
 import { ReviewControls } from './ReviewControls';
 import { useReviewStore } from '@/store/reviewStore';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import { Panel } from '@/components/app/Panel';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,8 @@ export function EventLogPanel() {
   const t = useTranslation();
   const reviewIds = useReviewStore((s) => s.selectedIds);
   const segments = useProjectStore((s) => s.segments);
+  const projectId = useProjectStore((s) => s.projectId);
+  const lastCreatedSegmentId = useProjectStore((s) => s.lastCreatedSegmentId);
   const { mainLabels, secondaryLabels } = useLocalizedLabels();
   const deleteSegment = useProjectStore((s) => s.deleteSegment);
   const createSegmentFromTrigger = useProjectStore((s) => s.createSegmentFromTrigger);
@@ -33,6 +35,25 @@ export function EventLogPanel() {
 
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
   const [tempSegmentName, setTempSegmentName] = useState('');
+  const newlyCreatedRow = useRef<HTMLDivElement>(null);
+  const previousList = useRef({ projectId, segments });
+
+  useLayoutEffect(() => {
+    const previous = previousList.current;
+    previousList.current = { projectId, segments };
+    if (previous.projectId !== projectId || !lastCreatedSegmentId || previous.segments.some(segment => segment.id === lastCreatedSegmentId)) return;
+    const row = newlyCreatedRow.current;
+    const viewport = row?.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (!row || !viewport) return;
+    const rowBounds = row.getBoundingClientRect();
+    const viewportBounds = viewport.getBoundingClientRect();
+    // Scroll only this list, leaving the video, page and keyboard focus in place.
+    if (rowBounds.top < viewportBounds.top || rowBounds.height > viewportBounds.height) {
+      viewport.scrollTop += rowBounds.top - viewportBounds.top - 8;
+    } else if (rowBounds.bottom > viewportBounds.bottom) {
+      viewport.scrollTop += rowBounds.bottom - viewportBounds.bottom + 8;
+    }
+  }, [projectId, segments, lastCreatedSegmentId]);
 
   const items = [...segments].sort((a, b) => {
     if (a.startTimeSec !== b.startTimeSec) return a.startTimeSec - b.startTimeSec;
@@ -134,6 +155,7 @@ export function EventLogPanel() {
             return (
               <div
                 key={seg.id}
+                ref={seg.id === lastCreatedSegmentId ? newlyCreatedRow : undefined}
                 className={cn(
                   "group flex items-start gap-2 rounded-md border p-2 hover:bg-muted/20 transition-colors",
                   isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"

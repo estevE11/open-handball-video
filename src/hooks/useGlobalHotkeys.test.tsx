@@ -10,11 +10,12 @@ beforeEach(() => {
   useProjectStore.getState().resetProject();
   useProjectStore.getState().setVideoFile(new File(['video'], 'match.mp4'), 'blob:test');
   useVideoStore.getState().reset();
+  useVideoStore.getState().setIsMuted(false);
   useVideoStore.getState().setDurationSec(60);
   useVideoStore.getState().setCurrentTimeSec(10);
   useVideoStore.getState().setPlaybackRate(3);
 });
-afterEach(() => { cleanup(); document.body.replaceChildren(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); document.body.replaceChildren(); useVideoStore.getState().setIsMuted(false); vi.useRealTimers(); });
 
 function focusedControl(role?: string) {
   const button = document.createElement('button');
@@ -23,6 +24,45 @@ function focusedControl(role?: string) {
   button.focus();
   return button;
 }
+
+it('toggles mute with an unbound M, once per press, including from focused controls', () => {
+  renderHook(useGlobalHotkeys);
+  const control = focusedControl('combobox');
+  expect(fireEvent.keyDown(control, { key: 'm' })).toBe(false);
+  expect(useVideoStore.getState().isMuted).toBe(true);
+  fireEvent.keyDown(control, { key: 'm', repeat: true });
+  expect(useVideoStore.getState().isMuted).toBe(true);
+  fireEvent.keyUp(control, { key: 'm' });
+  fireEvent.keyDown(control, { key: 'M' });
+  expect(useVideoStore.getState().isMuted).toBe(false);
+});
+
+it.each(['primary', 'secondary'])('gives an existing %s M binding priority over mute', (kind) => {
+  const state = useProjectStore.getState();
+  const segment = state.createSegmentFromTrigger(state.mainLabels[0].id, 10)!;
+  if (kind === 'primary') state.upsertMainLabel({ ...state.mainLabels[0], hotkey: 'M' });
+  else state.upsertSecondaryLabel({ ...state.secondaryLabels[0], hotkey: 'M' });
+  renderHook(useGlobalHotkeys);
+  fireEvent.keyDown(window, { key: 'm' });
+  expect(useVideoStore.getState().isMuted).toBe(false);
+  if (kind === 'primary') expect(useProjectStore.getState().segments).toHaveLength(2);
+  else expect(useProjectStore.getState().segments.find(item => item.id === segment.id)?.secondaryLabelIds).toContain(state.secondaryLabels[0].id);
+});
+
+it('leaves M alone in text fields, dialogs, modified shortcuts and without a loaded video', () => {
+  renderHook(useGlobalHotkeys);
+  const input = document.createElement('input');
+  document.body.append(input);
+  fireEvent.keyDown(input, { key: 'm' });
+  const dialog = document.createElement('div');
+  dialog.setAttribute('role', 'dialog');
+  const button = focusedControl(); dialog.append(button); document.body.append(dialog);
+  fireEvent.keyDown(button, { key: 'm' });
+  for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) fireEvent.keyDown(window, { key: 'm', [modifier]: true });
+  act(() => useProjectStore.getState().clearVideoSourceUrl());
+  fireEvent.keyDown(window, { key: 'm' });
+  expect(useVideoStore.getState().isMuted).toBe(false);
+});
 
 it.each(['combobox', 'slider', 'separator', undefined])('keeps playback shortcuts in control when a %s has focus', (role) => {
   renderHook(useGlobalHotkeys);
