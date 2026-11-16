@@ -190,7 +190,7 @@ it.each(['single video', 'multiple videos'])('keeps timeline numbers while reord
   fireEvent.keyDown(screen.getByPlaceholderText('Search main labels...'), { key: 'Escape' });
   expect(numbers()).toEqual(['3', '2', '1']);
   expect(within(row(2)).getByRole('checkbox').getAttribute('aria-checked')).toBe('false');
-  fireEvent.click(screen.getByRole('button', { name: 'Reset order' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Time order' }));
   expect(numbers()).toEqual(['1', '2', '3']);
   fireEvent.click(screen.getByRole('button', { name: 'Move clip 1 down' }));
   fireEvent.click(screen.getByRole('button', { name: 'Move clip 3 up' }));
@@ -289,4 +289,54 @@ it('bulk selection affects matching clips while preserving excluded hidden clips
   fireEvent.click(screen.getByRole('option', { name: 'Any' }));
   fireEvent.keyDown(screen.getByPlaceholderText('Search main labels...'), { key: 'Escape' });
   expect(boxes().map(box => box.getAttribute('aria-checked'))).toEqual(['false', 'true']);
+});
+
+it.each(['single video', 'multiple videos'])('groups the %s export by secondary tags and restores time order without losing selections', async (mode) => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 100);
+  const base = state.createSegmentFromTrigger(state.mainLabels[0].id, 5)!;
+  const secondaryLabels = [{ id: 'p1', name: 'Player 1' }, { id: 'p2', name: 'Player 2' }, { id: 'goal', name: 'Goal' }, { id: 'save', name: 'Save' }];
+  const tags = [[], ['goal', 'p2'], ['save', 'p1'], ['p1', 'goal'], ['goal', 'p1'], ['p1'], ['p2']];
+  const segments = tags.map((ids, index) => ({ ...base, id: `s${index + 1}`, startTimeSec: index * 10, endTimeSec: index * 10 + 1, secondaryLabelIds: ids }));
+  useProjectStore.setState({ segments, secondaryLabels });
+  if (mode === 'multiple videos') useProjectStore.setState({
+    clips: ['first', 'second'].map(id => ({ id, fileName: `${id}.mp4`, fileSize: 5, fileType: 'video/mp4', lastModified: 0, durationSec: 50 })),
+    session: { ...useProjectStore.getState().session, clipSources: [{ url: 'blob:first', file: null }, { url: 'blob:second', file: null }] },
+  });
+  const savedProject = useProjectStore.getState().exportProjectJson();
+  let finish!: (blob: Blob) => void;
+  const pending = new Promise<Blob>(resolve => { finish = resolve; });
+  vi.mocked(exportFilteredSegmentsToMp4).mockReturnValue(pending);
+  vi.mocked(exportClipSequence).mockReturnValue(pending);
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  const numbers = () => screen.getAllByRole('cell', { name: /^Timeline position / }).map(cell => cell.textContent);
+  const row = (number: number) => screen.getByRole('cell', { name: `Timeline position ${number}` }).closest('tr')!;
+  fireEvent.click(within(row(5)).getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'Group by secondary tags' }));
+  expect(numbers()).toEqual(['6', '4', '5', '3', '7', '2', '1']);
+  expect(screen.getByRole('button', { name: 'Group by secondary tags' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getAllByRole('combobox')[1]);
+  fireEvent.click(screen.getByRole('option', { name: 'Goal' }));
+  expect(numbers()).toEqual(['4', '5', '2']);
+  fireEvent.click(screen.getByRole('option', { name: 'Any' }));
+  fireEvent.keyDown(screen.getByPlaceholderText('Search secondary labels...'), { key: 'Escape' });
+  expect(numbers()).toEqual(['6', '4', '5', '3', '7', '2', '1']);
+  expect(within(row(5)).getByRole('checkbox').getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Move clip 6 down' }));
+  expect(numbers()).toEqual(['4', '6', '5', '3', '7', '2', '1']);
+  fireEvent.click(screen.getByRole('button', { name: 'Time order' }));
+  expect(numbers()).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+  expect(within(row(5)).getByRole('checkbox').getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: 'Group by secondary tags' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  expect((screen.getByRole('button', { name: 'Group by secondary tags' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Time order' }) as HTMLButtonElement).disabled).toBe(true);
+  const exported = mode === 'multiple videos' ? vi.mocked(exportClipSequence).mock.lastCall![2] : vi.mocked(exportFilteredSegmentsToMp4).mock.lastCall![1];
+  expect(exported.map(segment => segment.id)).toEqual(['s6', 's4', 's3', 's7', 's2', 's1']);
+  expect(useProjectStore.getState().exportProjectJson()).toBe(savedProject);
+  await act(async () => finish(new Blob(['mp4'])));
 });

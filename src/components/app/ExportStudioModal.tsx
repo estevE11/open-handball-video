@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { createExportTimeEstimator, formatExportDuration } from '@/lib/exportTimeEstimate';
 import { formatTimecode } from '@/lib/time';
+import { groupExportSegmentsBySecondaryTags } from '@/lib/exportSegmentOrder';
 import { exportClipSequence } from '@/lib/exportClipSequence';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
 import { useProjectStore } from '@/store/projectStore';
@@ -25,6 +26,8 @@ type ExportStudioModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
+
+type ExportOrder = { projectId: string; mode: 'secondary' } | { projectId: string; mode: 'manual'; ids: string[] };
 
 export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps) {
   const t = useTranslation();
@@ -40,7 +43,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [mainLabelIds, setMainLabelIds] = useState<string[]>([]);
   const [secondaryIds, setSecondaryIds] = useState<string[]>([]);
   const [excludedSegmentIds, setExcludedSegmentIds] = useState<string[]>([]);
-  const [exportOrder, setExportOrder] = useState<{ projectId: string; ids: string[] } | null>(null);
+  const [exportOrder, setExportOrder] = useState<ExportOrder | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [addGap, setAddGap] = useState(false);
@@ -66,9 +69,12 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const timelineNumbers = useMemo(() => new Map(timelineSegments.map((seg, index) => [seg.id, index + 1])), [timelineSegments]);
   const orderedSegments = useMemo(() => {
     if (exportOrder?.projectId !== projectId) return timelineSegments;
+    if (exportOrder.mode === 'secondary') return groupExportSegmentsBySecondaryTags(timelineSegments, secondaryLabels);
     const ranks = new Map(exportOrder.ids.map((id, index) => [id, index]));
     return [...timelineSegments].sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity));
-  }, [timelineSegments, exportOrder, projectId]);
+  }, [timelineSegments, exportOrder, projectId, secondaryLabels]);
+  const groupedBySecondary = exportOrder?.projectId === projectId && exportOrder.mode === 'secondary';
+  const inTimeOrder = exportOrder?.projectId !== projectId;
 
   function moveSegment(id: string, targetId: string) {
     if (isRendering) return;
@@ -78,7 +84,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
     if (from < 0 || to < 0 || from === to) return;
     ids.splice(from, 1);
     ids.splice(to, 0, id);
-    setExportOrder({ projectId, ids });
+    setExportOrder({ projectId, mode: 'manual', ids });
   }
 
   const filtered = useMemo(() => {
@@ -281,13 +287,18 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-muted-foreground">{t("{0} of {1} matching clips selected for export", selectedSegments.length, filtered.length)}</div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" disabled={isRendering || filtered.length === 0} onClick={toggleAllMatching}>
                 {allMatchingSelected ? t("Deselect all") : t("Select all")}
               </Button>
-              <Button variant="ghost" size="sm" disabled={isRendering || exportOrder?.projectId !== projectId} onClick={() => setExportOrder(null)}>{t("Reset order")}</Button>
+              <Button variant={groupedBySecondary ? 'secondary' : 'outline'} size="sm" aria-pressed={groupedBySecondary}
+                disabled={isRendering || filtered.length < 2 || !filtered.some(segment => segment.secondaryLabelIds.length)}
+                onClick={() => setExportOrder({ projectId, mode: 'secondary' })}>{t("Group by secondary tags")}</Button>
+              <Button variant="ghost" size="sm" aria-pressed={inTimeOrder} disabled={isRendering || inTimeOrder}
+                onClick={() => setExportOrder(null)}>{t("Time order")}</Button>
             </div>
           </div>
+          {groupedBySecondary && <p className="text-xs text-muted-foreground">{t("Uses your secondary-label order, then other tags and time. Each clip appears once; clips without secondary tags come last.")}</p>}
           <div className="max-h-[40vh] overflow-auto rounded-md border">
             <Table>
               <TableHeader>
