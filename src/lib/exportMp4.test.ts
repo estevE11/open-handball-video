@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { exportFilteredSegmentsToMp4 } from '@/lib/exportMp4';
+import { exportClipSequence } from '@/lib/exportClipSequence';
 import { clearDiagnostics, createDiagnosticReport, diagnosticEngine, exportDiagnosticPlan, recordDiagnostic, setDiagnosticContext } from './diagnostics';
 import { createEmptyProject } from './projectDefaults';
 
@@ -123,7 +124,7 @@ it('uses native export bytes directly without leaving an intermediate beside the
   try {
     const blob = await exportFilteredSegmentsToMp4('file:///videos/match%20%23100%25.mp4', segments);
     expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([4, 5, 6]);
-    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: 'file:///videos/match%20%23100%25.mp4', segments, addGap: false, mainLabels: [], secondaryLabels: [] });
+    expect(electron.runNativeExport).toHaveBeenCalledWith({ exportId: expect.any(String), inputPath: 'file:///videos/match%20%23100%25.mp4', segments, addGap: false, hideClipLabels: undefined, mainLabels: [], secondaryLabels: [] });
     expect(electron.readFile).not.toHaveBeenCalled();
   } finally { delete window.electron; }
 });
@@ -133,4 +134,45 @@ it('does not silently drop overlays after two ordinary encoding failures', async
   await expect(exportFilteredSegmentsToMp4(new File(['video'], 'match.mp4'), segments)).rejects.toThrow('exit code 1');
   expect(ffmpeg.exec).toHaveBeenCalledTimes(2);
   expect(ffmpeg.exec.mock.calls.every(([args]) => args.includes('-vf') && args.includes('libx264'))).toBe(true);
+});
+
+
+it('exports without any text filter when clip labels are hidden', async () => {
+  await exportFilteredSegmentsToMp4(new File(['video'], 'video.mp4'), [{ ...segments[0], name: 'Custom title', secondaryLabelIds: ['player'] }], 'export.mp4', {
+    hideClipLabels: true, secondaryLabels: [{ id: 'player', name: 'Player 1' }],
+  });
+  const args = ffmpeg.exec.mock.calls[0][0] as string[];
+  expect(args[args.indexOf('-vf') + 1]).toBe('format=yuv420p');
+  expect(ffmpeg.exec.mock.calls.flat(2).join(' ')).not.toContain('drawtext');
+});
+
+it('passes the hide-labels option to the desktop exporter', async () => {
+  const electron = { onExportProgress: vi.fn(() => () => {}), runNativeExport: vi.fn(async () => new Uint8Array([1])) };
+  Object.assign(window, { electron });
+  try {
+    await exportFilteredSegmentsToMp4('file:///videos/match.mp4', segments, 'export.mp4', { hideClipLabels: true });
+    expect(electron.runNativeExport).toHaveBeenCalledWith(expect.objectContaining({ hideClipLabels: true }));
+  } finally { delete window.electron; }
+});
+
+
+it.each(['browser', 'desktop'])('hides labels on every piece of a cross-source tag in the %s exporter', async (mode) => {
+  const clips = ['first', 'second'].map(id => ({ id, fileName: `${id}.mp4`, fileSize: 5, fileType: 'video/mp4', lastModified: 0, durationSec: 10 }));
+  const electron = { onExportProgress: vi.fn(() => () => {}), runNativeClipExport: vi.fn(async () => new Uint8Array([1])) };
+  if (mode === 'desktop') Object.assign(window, { electron });
+  try {
+    const inputs = clips.map(clip => mode === 'desktop' ? `file:///videos/${clip.fileName}` : new File(['video'], clip.fileName));
+    await exportClipSequence(clips, inputs, [{ ...segments[0], name: 'Custom title', startTimeSec: 9, endTimeSec: 11, secondaryLabelIds: ['player'] }], {
+      hideClipLabels: true, mainLabels: [], secondaryLabels: [{ id: 'player', name: 'Player 1' }],
+    });
+    if (mode === 'desktop') {
+      const rendered = electron.runNativeClipExport.mock.calls[0] as unknown as [{ pieces: { hideClipLabels?: boolean }[] }];
+      expect(rendered[0].pieces).toHaveLength(2);
+      expect(rendered[0].pieces.every(piece => piece.hideClipLabels === true)).toBe(true);
+    } else {
+      const commands = ffmpeg.exec.mock.calls.map(([args]) => args as string[]);
+      expect(commands.filter(args => args.includes('-vf'))).toHaveLength(2);
+      expect(commands.flat().join(' ')).not.toContain('drawtext');
+    }
+  } finally { delete window.electron; }
 });

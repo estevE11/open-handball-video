@@ -7,6 +7,7 @@ export type ExportPiece = {
   endTimeSec: number;
   segmentIndex: number;
   primaryText: string;
+  hideClipLabels?: boolean;
   secondaryText?: string;
   secondaryLabelsText?: string;
 };
@@ -51,7 +52,8 @@ export async function renderClipExport(backend: ClipExportBackend, pieces: Expor
         const args = ['-hide_banner', '-y', '-ss', piece.startTimeSec.toFixed(6), '-i', loaded];
         if (!info.hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
         let filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p`;
-        filter += `,${exportTitleOverlay(piece, backend.fontName, backend.measureText)}`;
+        const overlay = exportTitleOverlay(piece, backend.fontName, backend.measureText);
+        if (overlay) filter += `,${overlay}`;
         args.push('-t', duration.toFixed(6), '-map', '0:v:0', '-map', info.hasAudio ? '0:a:0' : '1:a:0',
           '-vf', filter, '-af', 'apad', ...encode, outputs[index]);
         const phase = `Rendering clip ${index + 1} of ${pieces.length}`;

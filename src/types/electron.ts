@@ -27,6 +27,7 @@ export interface ElectronAPI {
     inputPath: string;
     segments: Segment[];
     addGap: boolean;
+    hideClipLabels?: boolean;
     mainLabels: MainLabel[];
     secondaryLabels?: SecondaryLabel[];
   }) => Promise<Uint8Array>;

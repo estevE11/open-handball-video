@@ -16,6 +16,7 @@ export type ExportMp4Options = {
   signal?: AbortSignal;
   onProgress?: (phase: string, ratio: number) => void;
   addGap?: boolean;
+  hideClipLabels?: boolean;
   mainLabels?: MainLabel[];
   secondaryLabels?: SecondaryLabel[];
 };
@@ -42,6 +43,7 @@ export async function exportFilteredSegmentsToMp4(
         inputPath,
         segments,
         addGap,
+        hideClipLabels: opts.hideClipLabels,
         mainLabels,
         secondaryLabels,
       }), onProgress, opts.signal);
@@ -134,13 +136,14 @@ export async function exportFilteredSegmentsToMp4(
       // Overlay logic
       const label = mainLabels.find(l => l.id === seg.mainLabelId);
       const titles = getSegmentTitles(seg, label, secondaryLabels);
-      const vf = `format=yuv420p,${exportTitleOverlay(titles, fontName, backend.measureText)}`;
+      const overlay = exportTitleOverlay({ ...titles, hideClipLabels: opts.hideClipLabels }, fontName, backend.measureText);
+      const vf = ['format=yuv420p', overlay].filter(Boolean).join(',');
 
       const phase = `Rendering clip ${i + 1} of ${valid.length}`;
       commandContext = { stage: 'clip', sourceIndex: 0, renderIndex: i + 1, renderCount: valid.length,
         selectionIndex: segments.findIndex(segment => segment.id === seg.id) + 1,
         startTimeSec: Number(start), endTimeSec: seg.endTimeSec, durationSec: Number(dur),
-        secondaryOverlay: !!titles.secondaryText, secondaryLabelCount: seg.secondaryLabelIds.length };
+        hideClipLabels: !!opts.hideClipLabels, secondaryOverlay: !opts.hideClipLabels && !!titles.secondaryText, secondaryLabelCount: seg.secondaryLabelIds.length };
       commandProgress = (seconds) => onProgress(phase, 0.15 + (renderedDuration + Math.min(Number(dur), seconds)) / totalDuration * 0.7);
       commandProgress(0);
       console.info('[export] cutting clip', {

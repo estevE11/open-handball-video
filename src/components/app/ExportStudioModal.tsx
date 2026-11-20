@@ -47,6 +47,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [addGap, setAddGap] = useState(false);
+  const [hideClipLabels, setHideClipLabels] = useState(false);
   const exportController = useRef<AbortController | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -285,6 +286,11 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
             <Label htmlFor="add-gap" className="text-sm cursor-pointer">{t("Add 0.5s black gap between clips")}</Label>
           </div>
 
+          <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/10">
+            <Checkbox id="hide-clip-labels" checked={hideClipLabels} disabled={isRendering} onCheckedChange={(v) => setHideClipLabels(v === true)} />
+            <Label htmlFor="hide-clip-labels" className="text-sm cursor-pointer">{t("Hide clip labels (no text overlay)")}</Label>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-muted-foreground">{t("{0} of {1} matching clips selected for export", selectedSegments.length, filtered.length)}</div>
             <div className="flex flex-wrap items-center gap-2">
@@ -430,7 +436,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                   setTiming(timeEstimator.current.snapshot(startedAt));
                   const exportDetails = { ...projectDiagnosticSummary(useProjectStore.getState()), selectedSegments: selectedSegments.length,
                     selectedDurationSec: selectedSegments.reduce((sum, segment) => sum + Math.max(0, segment.endTimeSec - segment.startTimeSec), 0),
-                    addGap, native: !!window.electron, selectedMainLabelCount: mainLabelIds.length, selectedSecondaryLabelCount: secondaryIds.length };
+                    addGap, hideClipLabels, native: !!window.electron, selectedMainLabelCount: mainLabelIds.length, selectedSecondaryLabelCount: secondaryIds.length };
                   const operationId = recordDiagnostic('info', 'export', 'export.started', exportDetails);
                   setDiagnosticContext('export', { ...exportDetails, operationId, startedAt: new Date(startedAt).toISOString(), status: 'running' });
                   setDiagnosticContext('exportPlan', { operationId, ...exportDiagnosticPlan(useProjectStore.getState(), selectedSegments) });
@@ -441,7 +447,7 @@ export function ExportStudioModal({ open, onOpenChange }: ExportStudioModalProps
                     console.group('[Export Studio] Render MP4');
                     console.info('segments (selected)', selectedSegments.length);
                     const options = {
-                      addGap, mainLabels, secondaryLabels, signal: controller.signal,
+                      addGap, hideClipLabels, mainLabels, secondaryLabels, signal: controller.signal,
                       onProgress: (p: string, r: number) => {
                         if (controller.signal.aborted) return;
                         if (p !== lastPhase) recordDiagnostic('info', 'export', 'export.phase', { operationId, phase: p, ratio: r });

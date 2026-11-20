@@ -69,6 +69,7 @@
   "Secondary Label includes": "Inclou etiqueta secundària",
   "Search secondary labels...": "Cerca etiquetes secundàries...",
   "No tags found.": "No s’han trobat etiquetes.",
+  "Hide clip labels (no text overlay)": "Amaga les etiquetes dels clips (sense text superposat)",
   "Add 0.5s black gap between clips": "Afegeix una pausa negra de 0,5 s entre clips",
   "{0} of {1} matching clips selected for export": "{0} de {1} clips coincidents seleccionats per exportar",
   "Reset order": "Restableix l’ordre",

@@ -14,14 +14,14 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path as string;
 const ffprobePath = require('@ffprobe-installer/ffprobe').path as string;
 const run = promisify(execFile);
 
-it.each([{ addGap: false, audio: false }, { addGap: true, audio: false }, { addGap: false, audio: true }, { addGap: true, audio: true }])('exports a native source with %j', async ({ addGap, audio }) => {
+it.each([{ addGap: false, audio: false }, { addGap: true, audio: false }, { addGap: false, audio: true }, { addGap: true, audio: true }, { addGap: true, audio: true, hideClipLabels: true }])('exports a native source with %j', async ({ addGap, audio, hideClipLabels }) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ohv-silent-test-'));
   try {
     const inputPath = path.join(directory, 'silent #100%.mp4');
     const outputPath = path.join(directory, 'out.mp4');
     await run(ffmpegPath, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x240:r=25', ...(audio ? ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000'] : []), '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', inputPath]);
     const progress: number[] = [];
-    const bytes = await nativeSingleExport({ inputPath: pathToFileURL(inputPath).href, addGap, mainLabels: [{ id: 'attack', name: 'Attack' }],
+    const bytes = await nativeSingleExport({ inputPath: pathToFileURL(inputPath).href, addGap, hideClipLabels, mainLabels: [{ id: 'attack', name: 'Attack' }],
       secondaryLabels: [{ id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }], segments: [
       { name: '3:2:1', mainLabelId: 'attack', startTimeSec: 0.5, endTimeSec: 1.5, secondaryLabelIds: ['p1', 'p2'] },
       { name: 'Attack', mainLabelId: 'attack', startTimeSec: 2, endTimeSec: 3 },
@@ -41,6 +41,13 @@ it.each([{ addGap: false, audio: false }, { addGap: true, audio: false }, { addG
       if (caption.stdout[i] > 190 && caption.stdout[i + 1] > 190 && caption.stdout[i + 2] > 190) white++;
     }
     expect(white).toBe(0);
+    const top = await run(ffmpegPath, ['-v', 'error', '-ss', '0.5', '-i', outputPath, '-frames:v', '1', '-vf', 'crop=320:120:0:0,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { encoding: 'buffer' });
+    let topWhite = 0;
+    for (let i = 0; i < top.stdout.length; i += 3) {
+      if (top.stdout[i] > 190 && top.stdout[i + 1] > 190 && top.stdout[i + 2] > 190) topWhite++;
+    }
+    if (hideClipLabels) expect(topWhite).toBe(0);
+    else expect(topWhite).toBeGreaterThan(100);
     // Decode each clip and the optional black gap, verifying there are no missing parts.
     for (const [time, black] of [[0.5, false], [addGap ? 2 : 1.5, false], ...(addGap ? [[1.25, true]] : [])]) {
       const frame = await run(ffmpegPath, ['-v', 'error', '-ss', String(time), '-i', outputPath, '-frames:v', '1', '-vf', 'crop=2:2:200:180,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { encoding: 'buffer' });

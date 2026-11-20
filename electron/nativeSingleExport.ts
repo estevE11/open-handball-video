@@ -14,6 +14,7 @@ export type NativeSingleExportOptions = {
   mainLabels: { id: string; name: string }[];
   secondaryLabels?: { id: string; name: string }[];
   addGap: boolean;
+  hideClipLabels?: boolean;
 };
 type NativeExportConfig = { ffmpegPath: string; ffprobePath: string; fontPath: string };
 
@@ -28,7 +29,7 @@ export async function nativeSingleExport(opts: NativeSingleExportOptions, config
 }
 
 async function renderNativeSingleExport(
-  { inputPath, outputPath, segments, addGap, mainLabels, secondaryLabels }: NativeSingleExportOptions & { outputPath: string },
+  { inputPath, outputPath, segments, addGap, hideClipLabels, mainLabels, secondaryLabels }: NativeSingleExportOptions & { outputPath: string },
   { ffmpegPath, ffprobePath, fontPath }: NativeExportConfig,
   onProgress: ExportProgress,
   signal?: AbortSignal,
@@ -45,7 +46,7 @@ async function renderNativeSingleExport(
   const audio = probe.streams.find((stream) => stream.codec_type === 'audio');
   const hasAudio = !!audio;
   const sampleRate = Number(audio?.sample_rate) || 48000;
-  const hasDrawtext = (await run(ffmpegPath, ['-filters'])).includes('drawtext');
+  const hasDrawtext = !hideClipLabels && (await run(ffmpegPath, ['-filters'])).includes('drawtext');
   const measureText = hasDrawtext ? createExportTextMeasurer(await readFile(fontPath)) : () => 0;
   const args = ['-hide_banner', '-y', '-i', inputPath];
   

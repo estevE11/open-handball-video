@@ -340,3 +340,37 @@ it.each(['single video', 'multiple videos'])('groups the %s export by secondary 
   expect(useProjectStore.getState().exportProjectJson()).toBe(savedProject);
   await act(async () => finish(new Blob(['mp4'])));
 });
+
+
+it.each(['single video', 'multiple videos'])('can hide and restore clip labels for %s without changing the project', async (mode) => {
+  URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const state = useProjectStore.getState();
+  state.setVideoFile(new File(['video'], 'match.mp4'), 'blob:test', 60);
+  state.createSegmentFromTrigger(state.mainLabels[0].id, 10);
+  if (mode === 'multiple videos') useProjectStore.setState({
+    clips: ['first', 'second'].map(id => ({ id, fileName: `${id}.mp4`, fileSize: 5, fileType: 'video/mp4', lastModified: 0, durationSec: 30 })),
+    session: { ...useProjectStore.getState().session, clipSources: [{ url: 'blob:first', file: null }, { url: 'blob:second', file: null }] },
+  });
+  const savedProject = useProjectStore.getState().exportProjectJson();
+  let resolve!: (blob: Blob) => void;
+  const pending = () => new Promise<Blob>(yes => { resolve = yes; });
+  vi.mocked(exportFilteredSegmentsToMp4).mockImplementation(pending);
+  vi.mocked(exportClipSequence).mockImplementation(pending);
+  render(<ExportStudioModal open onOpenChange={() => {}} />);
+  const checkbox = screen.getByRole('checkbox', { name: 'Hide clip labels (no text overlay)' });
+  expect(checkbox.getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  const options = () => mode === 'single video'
+    ? vi.mocked(exportFilteredSegmentsToMp4).mock.lastCall?.[3]
+    : vi.mocked(exportClipSequence).mock.lastCall?.[3];
+  expect(options()?.hideClipLabels).toBe(true);
+  expect((checkbox as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => resolve(new Blob(['mp4'])));
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: 'Render MP4' }));
+  expect(options()?.hideClipLabels).toBe(false);
+  await act(async () => resolve(new Blob(['mp4'])));
+  expect(useProjectStore.getState().exportProjectJson()).toEqual(savedProject);
+});

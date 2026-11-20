@@ -44,3 +44,17 @@ it('weights live progress by duration and reserves completion until download pre
   expect(events.map((event) => event.ratio)).toEqual(events.map((event) => event.ratio).sort((a, b) => a - b));
   expect(events.at(-1)).toEqual({ phase: 'Preparing download', ratio: 0.99 });
 });
+
+
+it('omits all overlays for hidden labels while preserving split-source normalization and gaps', async () => {
+  const io = backend();
+  await renderClipExport(io, pieces.map(piece => ({ ...piece, hideClipLabels: true, secondaryText: 'Custom title', secondaryLabelsText: 'Player 1, Goal' })), true);
+  const commands = vi.mocked(io.exec).mock.calls.map(([args]) => args);
+  const parts = commands.filter(args => args.includes('-vf'));
+  expect(parts).toHaveLength(4);
+  for (const args of parts) {
+    expect(args[args.indexOf('-vf') + 1]).toBe('scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p');
+  }
+  expect(commands.flat().join(' ')).not.toContain('drawtext');
+  expect(io.remove).toHaveBeenCalledWith('gap.mp4');
+});
